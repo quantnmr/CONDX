@@ -21,7 +21,7 @@ jobs:
         run: pip install -U marimo
       - name: Export to WASM site
         run: |
-          marimo export html-wasm apps/NUS_FT_altair.py -o site --mode run
+          marimo export html-wasm apps/condx.py -o site --mode run
           touch site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
