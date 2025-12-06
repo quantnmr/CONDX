@@ -124,6 +124,230 @@ def _(mo):
 
 
 @app.cell
+def _(mo):
+    mo.md(r"""
+    ## Electron Density Profile Through the Ionosphere
+
+    The following plot shows how electron density varies with altitude in the ionosphere. The ionosphere consists of four main layers (D, E, F1, F2), each with different characteristics:
+
+    - **D layer (~75 km)**: Lowest density, but high absorption due to frequent electron collisions
+    - **E layer (~110 km)**: Regular daytime layer with moderate density
+    - **F1 layer (~190 km)**: Daytime layer that merges with F2 at night
+    - **F2 layer (~300 km)**: Highest peak density, most important for HF propagation
+
+    The F2 layer peak density varies with the foF2 parameter (critical frequency). Higher foF2 means higher electron density, which allows higher radio frequencies to be reflected.
+    """)
+    return
+
+
+@app.cell
+def _(
+    alt,
+    chapman_layer,
+    foF2_slider,
+    make_ionosphere_for_foF2,
+    np,
+    pd,
+    plasma_frequency_Hz_from_Ne,
+):
+    # Get current foF2 value from slider
+    _density_foF2 = foF2_slider.value
+
+    # Build ionosphere for this foF2
+    _total_density_func = make_ionosphere_for_foF2(_density_foF2)
+
+    # Calculate F2 peak density from foF2
+    _foF2_Hz = _density_foF2 * 1e6
+    _Ne_peak_cm3 = (_foF2_Hz / 8.98e3) ** 2
+    _Ne_peak_m3 = _Ne_peak_cm3 * 1e6
+
+    # Generate altitude array
+    _z_array = np.linspace(0, 600, 1000)
+
+    # Calculate individual layer contributions
+    _Ne_D = chapman_layer(_z_array, 1.5e9, 75.0, 8.0)
+    _Ne_E = chapman_layer(_z_array, 8e10, 110.0, 15.0)
+    _Ne_F1 = chapman_layer(_z_array, 3e11, 190.0, 30.0)
+    _Ne_F2 = chapman_layer(_z_array, _Ne_peak_m3, 300.0, 55.0)
+    _Ne_total = _total_density_func(_z_array)
+
+    # Also calculate plasma frequency for reference
+    _fp_total = plasma_frequency_Hz_from_Ne(_Ne_total) / 1e6  # Convert to MHz
+
+    # Prepare data for Altair - electron density by layer
+    _density_data = []
+    for _i, _z in enumerate(_z_array):
+        _density_data.append({'altitude': _z, 'density': _Ne_D[_i] / 1e9, 'layer': 'D layer'})
+        _density_data.append({'altitude': _z, 'density': _Ne_E[_i] / 1e9, 'layer': 'E layer'})
+        _density_data.append({'altitude': _z, 'density': _Ne_F1[_i] / 1e9, 'layer': 'F1 layer'})
+        _density_data.append({'altitude': _z, 'density': _Ne_F2[_i] / 1e9, 'layer': 'F2 layer'})
+        _density_data.append({'altitude': _z, 'density': _Ne_total[_i] / 1e9, 'layer': 'Total'})
+
+    _df_density = pd.DataFrame(_density_data)
+
+    # Prepare data for plasma frequency plot (single curve, not multiple layers)
+    _df_plasma = pd.DataFrame({
+        'altitude': _z_array,
+        'plasma_freq': _fp_total
+    })
+
+    # Create layer selection for hover highlighting
+    _layer_selection = alt.selection_point(
+        fields=['layer'],
+        bind='legend',
+        on='mouseover',
+        nearest=True
+    )
+
+    # Left chart: Electron density by layer
+    _density_chart = alt.Chart(_df_density).mark_line(size=2).encode(
+        x=alt.X('density:Q', 
+                title='Electron Density (× 10⁹ electrons/m³)',
+                scale=alt.Scale(domain=[0, _df_density['density'].max() * 1.05])),
+        y=alt.Y('altitude:Q', 
+                title='Altitude (km)',
+                scale=alt.Scale(domain=[0, 600])),
+        color=alt.Color('layer:N',
+                       legend=alt.Legend(title='Layer'),
+                       scale=alt.Scale(
+                           domain=['D layer', 'E layer', 'F1 layer', 'F2 layer', 'Total'],
+                           range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#000000']
+                       )),
+        strokeDash=alt.condition(
+            alt.datum.layer == 'Total',
+            alt.value([5, 5]),
+            alt.value([0])
+        ),
+        strokeWidth=alt.condition(
+            alt.datum.layer == 'Total',
+            alt.value(3),
+            alt.value(2)
+        ),
+        opacity=alt.condition(_layer_selection, alt.value(1.0), alt.value(0.3)),
+        detail='layer:N',
+        tooltip=[
+            alt.Tooltip('layer:N', title='Layer'),
+            alt.Tooltip('altitude:Q', title='Altitude (km)', format='.0f'),
+            alt.Tooltip('density:Q', title='Density (×10⁹ e/m³)', format='.3f')
+        ]
+    ).add_params(
+        _layer_selection
+    ).properties(
+        width=400,
+        height=400,
+        title=f'Ionospheric Layers (foF2 = {_density_foF2} MHz)'
+    )
+
+    # Add layer peak labels
+    _idx_D = np.argmax(_Ne_D)
+    _idx_E = np.argmax(_Ne_E)
+    _idx_F1 = np.argmax(_Ne_F1)
+    _idx_F2 = np.argmax(_Ne_F2)
+
+    _layer_labels = pd.DataFrame([
+        {'density': _Ne_D[_idx_D] / 1e9, 'altitude': _z_array[_idx_D], 'label': 'D (~75 km)', 'color': '#1f77b4'},
+        {'density': _Ne_E[_idx_E] / 1e9, 'altitude': _z_array[_idx_E], 'label': 'E (~110 km)', 'color': '#ff7f0e'},
+        {'density': _Ne_F1[_idx_F1] / 1e9, 'altitude': _z_array[_idx_F1], 'label': 'F1 (~190 km)', 'color': '#2ca02c'},
+        {'density': _Ne_F2[_idx_F2] / 1e9, 'altitude': _z_array[_idx_F2], 'label': 'F2 (~300 km)', 'color': '#d62728'}
+    ])
+
+    # Create bordered label boxes with text
+    # Add computed box coordinates
+    _box_width_val = _df_density['density'].max() * 0.25
+    _box_height_val = 20
+
+    _layer_labels_boxes = []
+    for _, row in _layer_labels.iterrows():
+        _layer_labels_boxes.append({
+            'x_min': row['density'] + 2,
+            'x_max': row['density'] + _box_width_val,
+            'y_min': row['altitude'] - _box_height_val / 2,
+            'y_max': row['altitude'] + _box_height_val / 2,
+            'x_center': row['density'] + _box_width_val / 2,
+            'y_center': row['altitude'],
+            'label': row['label'],
+            'color': row['color']
+        })
+    _df_label_boxes = pd.DataFrame(_layer_labels_boxes)
+
+    # Create background boxes
+    _label_boxes = alt.Chart(_df_label_boxes).mark_rect(
+        opacity=0.95,
+        cornerRadius=4
+    ).encode(
+        x=alt.X('x_min:Q'),
+        x2='x_max:Q',
+        y=alt.Y('y_min:Q'),
+        y2='y_max:Q',
+        color=alt.value('white'),
+        stroke=alt.Color('color:N', scale=None, legend=None),
+        strokeWidth=alt.value(1.875)
+    )
+
+    _label_text = alt.Chart(_df_label_boxes).mark_text(
+        align='center',
+        baseline='middle',
+        fontSize=12,
+        fontWeight='bold'
+    ).encode(
+        x='x_center:Q',
+        y='y_center:Q',
+        text='label:N',
+        color=alt.Color('color:N', scale=None, legend=None)
+    )
+
+    _density_chart_with_labels = _density_chart + _label_boxes + _label_text
+
+    # Right chart: Plasma frequency profile (explicitly sort and use order encoding)
+    _plasma_chart = alt.Chart(_df_plasma).mark_line(size=2.5, color='darkblue').encode(
+        x=alt.X('plasma_freq:Q', 
+                title='Plasma Frequency (MHz)',
+                scale=alt.Scale(domain=[0, _df_plasma['plasma_freq'].max() * 1.05])),
+        y=alt.Y('altitude:Q', 
+                title='Altitude (km)',
+                scale=alt.Scale(domain=[0, 600])),
+        order='altitude:Q',
+        tooltip=[
+            alt.Tooltip('altitude:Q', title='Altitude (km)', format='.0f'),
+            alt.Tooltip('plasma_freq:Q', title='Plasma Freq (MHz)', format='.2f')
+        ]
+    ).properties(
+        width=400,
+        height=400,
+        title='Plasma Frequency Profile'
+    )
+
+    # Add foF2 reference line
+    _foF2_line = alt.Chart(pd.DataFrame({'foF2': [_density_foF2]})).mark_rule(
+        color='red',
+        strokeDash=[5, 5],
+        size=2
+    ).encode(
+        x='foF2:Q'
+    )
+
+    # Add peak annotation
+    _peak_idx = np.argmax(_fp_total)
+    _peak_annotation = alt.Chart(pd.DataFrame([{
+        'plasma_freq': _df_plasma['plasma_freq'].max() * 0.3,
+        'altitude': 100,
+        'text': f'Peak: {_fp_total.max():.1f} MHz\nat {_z_array[_peak_idx]:.0f} km\n\nfoF2 = {_density_foF2} MHz (red line)'
+    }])).mark_text(
+        align='left',
+        fontSize=11,
+        dx=5
+    ).encode(
+        x='plasma_freq:Q',
+        y='altitude:Q',
+        text='text:N'
+    )
+
+    # Combine charts horizontally
+    (_density_chart_with_labels | (_plasma_chart + _foF2_line + _peak_annotation))
+    return
+
+
+@app.cell
 def _(R_E, np, pi):
     # ============================================================================
     # IONOSPHERE MODEL FUNCTIONS
@@ -605,11 +829,49 @@ def _(R_E, np, pi):
         total_loss_dB = 8.686 * total_absorption
         return x_path, z_path, "stops", total_loss_dB
     return (
+        chapman_layer,
         make_ionosphere_for_foF2,
         make_refractive_index_func,
+        plasma_frequency_Hz_from_Ne,
         trace_ray_spherical_with_path,
         trace_ray_with_absorption,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    # ============================================================================
+    # INTERACTIVE RAY PATH CONTROLS
+    # ============================================================================
+
+    # Create sliders for interactive ray path visualization
+    # Using on_change=False means sliders only update when mouse is released
+    foF2_slider = mo.ui.slider(
+        start=3,
+        stop=20,
+        step=1,
+        value=12,
+        label="foF2 (MHz)",
+        full_width=True
+    )
+
+    elevation_slider = mo.ui.slider(
+        start=5,
+        stop=85,
+        step=5,
+        value=30,
+        label="Elevation Angle (degrees)",
+        full_width=True
+    )
+
+    # Display sliders in a vertical stack
+    mo.vstack([
+        mo.md("## Interactive Ray Path Visualization"),
+        mo.md("Adjust the sliders to see how ray paths change with different ionospheric conditions and launch angles."),
+        foF2_slider,
+        elevation_slider
+    ])
+    return elevation_slider, foF2_slider
 
 
 @app.cell
@@ -737,42 +999,6 @@ def _(
 
     _combined_chart_interactive
     return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    # ============================================================================
-    # INTERACTIVE RAY PATH CONTROLS
-    # ============================================================================
-
-    # Create sliders for interactive ray path visualization
-    # Using on_change=False means sliders only update when mouse is released
-    foF2_slider = mo.ui.slider(
-        start=3,
-        stop=20,
-        step=1,
-        value=12,
-        label="foF2 (MHz)",
-        full_width=True
-    )
-
-    elevation_slider = mo.ui.slider(
-        start=5,
-        stop=85,
-        step=5,
-        value=30,
-        label="Elevation Angle (degrees)",
-        full_width=True
-    )
-
-    # Display sliders in a vertical stack
-    mo.vstack([
-        mo.md("## Interactive Ray Path Visualization"),
-        mo.md("Adjust the sliders to see how ray paths change with different ionospheric conditions and launch angles."),
-        foF2_slider,
-        elevation_slider
-    ])
-    return elevation_slider, foF2_slider
 
 
 @app.cell
@@ -965,6 +1191,12 @@ def _(
     # Combine charts vertically
     (_ray_chart + _endpoint_chart) & _loss_chart
     return alt, pd
+
+
+@app.cell
+def _():
+    # Export functions needed by new cell
+    return
 
 
 @app.cell
