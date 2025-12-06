@@ -37,11 +37,13 @@ def _(mo):
     mo.md(r"""
     # Understanding HF Radio Wave Propagation Through the Ionosphere
 
-    ## What You'll See in the Interactive Visualizations Below
+    ## Interactive Educational Notebook
 
-    The following interactive charts demonstrate how **High Frequency (HF) radio waves** (1.8-30 MHz) propagate through Earth's ionosphere to enable long-distance communication. By adjusting the sliders, you can explore how different conditions affect radio propagation.
+    This notebook demonstrates how **High Frequency (HF) radio waves** (1.8-30 MHz) propagate through Earth's ionosphere to enable long-distance communication. Use the interactive visualizations below to explore how different conditions affect radio propagation.
 
-    ### Key Concepts
+    ---
+
+    ## Key Concepts
 
     **Ionospheric Skip Propagation:**
     - HF radio waves launched from Earth's surface can **reflect off the ionosphere** (a layer of ionized atmosphere 60-600 km altitude)
@@ -49,76 +51,78 @@ def _(mo):
     - Skip distance depends on **frequency**, **launch angle**, and **ionospheric conditions**
 
     **Critical Parameters:**
-    - **foF2 (critical frequency)**: The maximum frequency that can be reflected by the F2 layer at vertical incidence
+    - **foF2 (critical frequency)**: Maximum frequency that can be reflected by the F2 layer at vertical incidence
       - Higher foF2 → ionosphere can reflect higher frequencies
       - Varies with solar activity, time of day, season (typical range: 3-15 MHz)
     - **Elevation angle**: Launch angle of the radio wave above the horizon
       - Low angles (10-20°) → long skip distances (2000+ km)
       - High angles (60-80°) → short skip distances (< 500 km)
 
-    ### The Physics Behind Ray Tracing
+    ---
 
-    The visualization uses **ray tracing** to simulate radio wave paths through a spherical Earth model with a multi-layer ionosphere:
+    ## The Physics Behind the Model
 
-    **1. Refractive Index (how waves bend):**
+    ### 1. Refractive Index (Wave Bending & Absorption)
 
-    The complex refractive index determines both wave bending and absorption:
+    The complex refractive index determines both wave bending and absorption using the **Appleton-Hartree equation**:
 
     $$n^2 = 1 - \frac{X}{1 - jZ}$$
 
     where:
-    - $X = (\omega_p/\omega)^2$ is the normalized plasma frequency (depends on electron density)
-    - $Z = \nu/\omega$ is the normalized collision frequency (determines absorption)
-    - $\omega_p = 2\pi f_p = 2\pi \cdot 8.98 \times 10^3 \sqrt{N_e}$ (plasma frequency from electron density)
-    - $\nu(z)$ is the altitude-dependent electron-neutral collision frequency
+    - $X = (\omega_p/\omega)^2$ = normalized plasma frequency (depends on electron density)
+    - $Z = \nu/\omega$ = normalized collision frequency (determines absorption)
+    - $\omega_p = 2\pi \cdot 8.98 \times 10^3 \sqrt{N_e}$ (plasma frequency from electron density $N_e$)
+    - $\nu(z)$ = altitude-dependent electron-neutral collision frequency
 
-    **2. Snell's Law in Spherical Coordinates:**
+    ### 2. Snell's Law in Spherical Coordinates
 
-    The ray parameter $b = n \cdot r \cdot \sin(\psi)$ is conserved along the ray path, where:
-    - $n$ is the refractive index
-    - $r$ is the radial distance from Earth's center
-    - $\psi$ is the angle between the ray and the radial direction
+    The **ray parameter** $b = n \cdot r \cdot \sin(\psi)$ is conserved along the ray path, where:
+    - $n$ = refractive index
+    - $r$ = radial distance from Earth's center
+    - $\psi$ = angle between ray and radial direction
 
-    As the wave travels upward into regions of higher electron density, $n$ decreases. To conserve $b$, the ray must bend (change $\psi$). When $n^2 < 0$, the wave cannot propagate and reflects back toward Earth.
+    As waves travel into regions of higher electron density, $n$ decreases. To conserve $b$, the ray bends. When $n^2 < 0$, the wave reflects back toward Earth.
 
-    **3. Absorption Loss:**
+    ### 3. Absorption Loss (Sen-Wyller Formula)
 
-    Radio waves lose energy as they pass through the ionosphere due to collisions between electrons and neutral particles. The absorption coefficient is:
+    Radio waves lose energy through collisions. The absorption coefficient is:
 
     $$\alpha = \frac{\omega}{2c} \cdot \frac{|\text{Im}(n^2)|}{\text{Re}(n)}$$
 
-    Total path loss integrates absorption along the ray: $\text{Loss (dB)} = 8.686 \int \alpha(s) \, ds$
+    Total path loss: $\text{Loss (dB)} = 8.686 \int \alpha(s) \, ds$
 
-    Key behaviors:
-    - **Lower frequencies** (1.8-7 MHz) suffer **more absorption** in the D-layer (∝ 1/f²)
-    - **Mid-HF** (14-21 MHz) typically has the **lowest loss** for long-distance paths
-    - **D-layer** (70-90 km) causes most absorption (high collision frequency)
+    Key behaviors (calibrated to match real-world measurements):
+    - **Lower frequencies** (1.8-7 MHz) suffer **more absorption** in D-layer (∝ 1/f²)
+    - **Mid-HF** (14-21 MHz) has **lowest loss** for long-distance paths
+    - **D-layer** (70-90 km) causes most absorption due to high collision frequency
 
-    **4. Chapman Layer Electron Density:**
+    ### 4. Chapman Layer Electron Density
 
-    Each ionospheric layer (D, E, F1, F2) is modeled using the Chapman function:
+    Each ionospheric layer (D, E, F1, F2) uses the **Chapman function**:
 
     $$N_e(z) = N_{max} \exp\left[\frac{1}{2}\left(1 - \xi - e^{-\xi}\right)\right]$$
 
-    where $\xi = (z - h_m)/H$, with $h_m$ the peak altitude and $H$ the scale height.
+    where $\xi = (z - h_m)/H$ with $h_m$ = peak altitude, $H$ = scale height.
 
-    ### What to Look For
+    ---
 
-    **Ray Path Plot:**
-    - **Color coding** shows signal strength (green = strong, red = weak)
-    - **Returning rays** (marked with ×) successfully complete a skip
-    - **Escaping rays** pass through the ionosphere without returning
-    - Lower frequencies bend more sharply (higher electron density required to reflect)
+    ## How to Use This Notebook
 
-    **Absorption Loss Bar Chart:**
-    - Shows total path loss in dB for each frequency
-    - **Hover over bars or rays** to highlight that frequency across both charts
-    - Notice how loss generally **decreases with frequency** (1/f² law)
-    - Very low frequencies (1.8 MHz) can have 10× more loss than mid-HF (14 MHz)
+    **Below you'll find three interactive sections:**
 
-    Try adjusting:
-    - **foF2**: Higher values allow higher frequencies to propagate but lower frequencies may escape
-    - **Elevation angle**: Lower angles give longer skip but longer paths through the absorbing D-layer
+    1. **Electron Density Profile** - Shows how electron density varies with altitude across the four ionospheric layers (D, E, F1, F2)
+
+    2. **Interactive Controls** - Sliders to adjust foF2 (ionospheric conditions) and elevation angle (launch angle)
+
+    3. **Ray Path Visualization** - Shows how radio waves at different frequencies propagate through the ionosphere
+
+    4. **Signal Loss Analysis** - Displays absorption loss for each frequency with color-coded signal strength
+
+    **Try experimenting with the sliders to see:**
+    - How higher foF2 allows higher frequencies to propagate
+    - How lower elevation angles create longer skip distances
+    - Why some frequencies work better than others (lower absorption loss)
+    - How rays at different frequencies bend differently through the ionosphere
     """)
     return
 
