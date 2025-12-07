@@ -53,10 +53,13 @@ def _(mo):
     **Critical Parameters:**
     - **foF2 (critical frequency)**: Maximum frequency that can be reflected by the F2 layer at vertical incidence
       - Higher foF2 → ionosphere can reflect higher frequencies
-      - Varies with solar activity, time of day, season (typical range: 3-15 MHz)
+      - Varies with solar activity, time of day, season (typical range: 2-25 MHz in this model)
+      - **Night** (2-5 MHz): D-layer absent, F2 layer at high altitude (~400 km)
+      - **Dawn/Dusk** (5-10 MHz): D-layer building, F1 layer emerging
+      - **Day** (10-25 MHz): All layers present, F2 layer at lower altitude (~260 km)
     - **Elevation angle**: Launch angle of the radio wave above the horizon
-      - Low angles (10-20°) → long skip distances (2000+ km)
-      - High angles (60-80°) → short skip distances (< 500 km)
+      - Low angles (5-20°) → long skip distances (2000+ km)
+      - High angles (60-85°) → short skip distances (< 500 km)
 
     ---
 
@@ -168,11 +171,42 @@ def _(
     # Generate altitude array
     _z_array = np.linspace(0, 600, 1000)
 
-    # Calculate individual layer contributions
-    _Ne_D = chapman_layer(_z_array, 1.5e9, 75.0, 8.0)
-    _Ne_E = chapman_layer(_z_array, 8e10, 110.0, 15.0)
-    _Ne_F1 = chapman_layer(_z_array, 3e11, 190.0, 30.0)
-    _Ne_F2 = chapman_layer(_z_array, _Ne_peak_m3, 300.0, 55.0)
+    # ========================================================================
+    # Calculate layer parameters using the SAME logic as make_ionosphere_for_foF2
+    # This ensures individual layers sum to the Total line
+    # ========================================================================
+
+    # F2 altitude (matches function)
+    _h_F2 = 420.0 - (_density_foF2 - 2.0) * 7.0
+    _h_F2 = max(250.0, min(420.0, _h_F2))
+
+    # D layer strength (matches function)
+    if _density_foF2 < 5.0:
+        _D_factor = 0.0
+    elif _density_foF2 < 8.0:
+        _D_factor = (_density_foF2 - 5.0) / 3.0
+    else:
+        _D_factor = 1.0
+    _Ne_D_max = 1.5e9 * _D_factor
+
+    # F1 layer strength (matches function)
+    if _density_foF2 < 4.5:
+        _F1_factor = 0.0
+    elif _density_foF2 < 7.0:
+        _F1_factor = (_density_foF2 - 4.5) / 2.5
+    else:
+        _F1_factor = 1.0
+    _Ne_F1_max = 3e11 * _F1_factor
+
+    # E layer strength (matches function)
+    _E_factor = 0.5 + 0.5 * min(1.0, _density_foF2 / 12.0)
+    _Ne_E_max = 8e10 * _E_factor
+
+    # Calculate individual layer contributions with variable parameters
+    _Ne_D = chapman_layer(_z_array, _Ne_D_max, 75.0, 8.0)
+    _Ne_E = chapman_layer(_z_array, _Ne_E_max, 110.0, 15.0)
+    _Ne_F1 = chapman_layer(_z_array, _Ne_F1_max, 190.0, 30.0)
+    _Ne_F2 = chapman_layer(_z_array, _Ne_peak_m3, _h_F2, 55.0)
     _Ne_total = _total_density_func(_z_array)
 
     # Also calculate plasma frequency for reference
@@ -212,7 +246,7 @@ def _(
                 title='Altitude (km)',
                 scale=alt.Scale(domain=[0, 600])),
         color=alt.Color('layer:N',
-                       legend=alt.Legend(title='Layer'),
+                       legend=alt.Legend(title='Layer', symbolStrokeWidth=4, symbolSize=200),
                        scale=alt.Scale(
                            domain=['D layer', 'E layer', 'F1 layer', 'F2 layer', 'Total'],
                            range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#000000']
@@ -388,50 +422,92 @@ def _(R_E, np, pi):
 
     def make_ionosphere_for_foF2(foF2_MHz):
         """
-        Constructs a 4-layer ionosphere model (D, E, F1, F2) for a given foF2 value.
+        Constructs a realistic 4-layer ionosphere model where foF2 drives all layer characteristics.
 
-        The ionosphere consists of multiple layers at different altitudes:
-        - D layer (~75 km): Lowest layer, high absorption, mainly affects lower HF
-        - E layer (~110 km): Regular daytime layer, supports some HF skip
-        - F1 layer (~190 km): Daytime only, merges with F2 at night
-        - F2 layer (~300 km): Highest/most important for HF, peak density varies with foF2
+        This model implements smooth transitions between night-like, transition, and day-like conditions:
+        - Low foF2 (2-5 MHz): Night conditions - high F2 altitude, no D layer, weak/no F1
+        - Medium foF2 (5-10 MHz): Transition/dawn/dusk - intermediate conditions
+        - High foF2 (10-25 MHz): Day/high solar activity - low F2 altitude, strong D and F1 layers
 
         Parameters:
         -----------
         foF2_MHz : float
-            Critical frequency of F2 layer in MHz. This is the maximum frequency that
-            can be reflected by the F2 layer at vertical incidence. Typical values:
-            - Night/low solar activity: 3-6 MHz
-            - Day/moderate activity: 6-12 MHz  
-            - Day/high solar activity: 12-15+ MHz
+            Critical frequency of F2 layer in MHz. This parameter drives the entire ionospheric
+            state including layer altitudes, densities, and presence. Range: 2-25 MHz
+            - Night/low solar: 2-5 MHz → high F2 altitude, no D layer
+            - Day/moderate: 6-12 MHz → intermediate conditions
+            - Day/high solar: 12-25 MHz → low F2 altitude, strong D layer
 
         Returns:
         --------
         total_electron_density : function
             Function that takes altitude z_km and returns total electron density
         """
-        # Convert foF2 to peak electron density using the plasma frequency relation
+        # Convert foF2 to F2 peak electron density using plasma frequency relation
         # fp(MHz) = 8.98 * sqrt(Ne_cm3), so Ne = (fp/8.98)^2
         foF2_Hz = foF2_MHz * 1e6
         Ne_peak_cm3 = (foF2_Hz / 8.98e3) ** 2
         Ne_peak_m3 = Ne_peak_cm3 * 1e6
 
+        # ========================================================================
+        # foF2-DRIVEN LAYER PARAMETERS
+        # ========================================================================
+        # Lower foF2 → nighttime → higher F2 altitude, weaker/absent lower layers
+        # Higher foF2 → daytime → lower F2 altitude, stronger lower layers
+
+        # F2 peak altitude: varies inversely with foF2
+        # Night (low foF2): ~400 km, Day (high foF2): ~250-280 km
+        h_F2 = 420.0 - (foF2_MHz - 2.0) * 7.0  # Linear decrease from 406 km @ 2 MHz to 259 km @ 25 MHz
+        h_F2 = max(250.0, min(420.0, h_F2))     # Clamp to realistic range
+
+        # D layer strength: absent at night, strong during day
+        # Smooth transition using sigmoid-like function
+        if foF2_MHz < 5.0:
+            # Night: D layer essentially absent
+            D_factor = 0.0
+        elif foF2_MHz < 8.0:
+            # Dawn/dusk transition: D layer building
+            D_factor = (foF2_MHz - 5.0) / 3.0  # Linear ramp from 0 to 1 over 5-8 MHz
+        else:
+            # Day: D layer fully present
+            D_factor = 1.0
+
+        Ne_D_max = 1.5e9 * D_factor  # D layer peak density (0 at night, 1.5e9 during day)
+
+        # F1 layer strength: weak/absent at night, present during day
+        if foF2_MHz < 4.5:
+            # Night: F1 merged with F2, essentially absent as separate layer
+            F1_factor = 0.0
+        elif foF2_MHz < 7.0:
+            # Transition: F1 layer separating from F2
+            F1_factor = (foF2_MHz - 4.5) / 2.5  # Linear ramp from 0 to 1 over 4.5-7 MHz
+        else:
+            # Day: F1 layer fully formed
+            F1_factor = 1.0
+
+        Ne_F1_max = 3e11 * F1_factor  # F1 layer peak density
+
+        # E layer: always present but varies in strength
+        # Weaker at night, stronger during day
+        E_factor = 0.5 + 0.5 * min(1.0, foF2_MHz / 12.0)  # Varies from 0.5 to 1.0
+        Ne_E_max = 8e10 * E_factor
+
         def total_electron_density(z_km):
             """
             Returns total electron density by summing all four ionospheric layers.
 
-            Layer definitions (Nmax, hm, H):
-            - D layer:  1.5e9 electrons/m³,  75 km peak,  8 km scale height (calibrated to match real-world absorption)
-            - E layer:  8e10 electrons/m³, 110 km peak, 15 km scale height
-            - F1 layer: 3e11 electrons/m³, 190 km peak, 30 km scale height
-            - F2 layer: Variable (from foF2), 300 km peak, 55 km scale height
+            Layer parameters vary with foF2:
+            - D layer:  Variable density (0 at night, 1.5e9 during day), 75 km peak, 8 km scale
+            - E layer:  Variable density (4e10 to 8e10), 110 km peak, 15 km scale  
+            - F1 layer: Variable density (0 at night, 3e11 during day), 190 km peak, 30 km scale
+            - F2 layer: Variable density (from foF2), variable altitude (250-420 km), 55 km scale
             """
             z = np.asarray(z_km)
             Ne_total = (
-                chapman_layer(z, 1.5e9, 75.0, 8.0) +      # D layer (reduced from 5e9 to match real absorption)
-                chapman_layer(z, 8e10, 110.0, 15.0) +     # E layer
-                chapman_layer(z, 3e11, 190.0, 30.0) +     # F1 layer
-                chapman_layer(z, Ne_peak_m3, 300.0, 55.0) # F2 layer (varies with foF2)
+                chapman_layer(z, Ne_D_max, 75.0, 8.0) +      # D layer: absent at night, strong during day
+                chapman_layer(z, Ne_E_max, 110.0, 15.0) +    # E layer: always present, varies in strength
+                chapman_layer(z, Ne_F1_max, 190.0, 30.0) +   # F1 layer: absent at night, present during day
+                chapman_layer(z, Ne_peak_m3, h_F2, 55.0)     # F2 layer: variable altitude and density
             )
             return Ne_total
 
@@ -849,13 +925,12 @@ def _(mo):
     # ============================================================================
 
     # Create sliders for interactive ray path visualization
-    # Using on_change=False means sliders only update when mouse is released
     foF2_slider = mo.ui.slider(
-        start=3,
-        stop=20,
-        step=1,
+        start=2,
+        stop=25,
+        step=0.5,
         value=12,
-        label="foF2 (MHz)",
+        label="foF2",
         full_width=True
     )
 
@@ -864,18 +939,49 @@ def _(mo):
         stop=85,
         step=5,
         value=30,
-        label="Elevation Angle (degrees)",
+        label="Elevation Angle",
         full_width=True
     )
 
-    # Display sliders in a vertical stack
+    # Display sliders - values will be shown in next cell
     mo.vstack([
         mo.md("## Interactive Ray Path Visualization"),
         mo.md("Adjust the sliders to see how ray paths change with different ionospheric conditions and launch angles."),
-        foF2_slider,
-        elevation_slider
     ])
     return elevation_slider, foF2_slider
+
+
+@app.cell
+def _(elevation_slider, foF2_slider, mo):
+    # ============================================================================
+    # SLIDER DISPLAY WITH VALUES AND DAY/NIGHT INDICATOR
+    # ============================================================================
+
+    # Get current slider values
+    _current_foF2 = foF2_slider.value
+    _current_elev = elevation_slider.value
+
+    # Determine ionospheric condition based on foF2 value
+    if _current_foF2 < 5.0:
+        _condition = "🌙 **Night conditions** (D-layer absent, F2 high altitude)"
+        _color = "blue"
+    elif _current_foF2 < 10.0:
+        _condition = "🌅 **Dawn/Dusk transition** (D-layer building, intermediate conditions)"
+        _color = "orange"
+    else:
+        _condition = "☀️ **Daytime conditions** (D-layer present, F2 low altitude)"
+        _color = "gold"
+
+    # Display sliders with value labels and condition indicator
+    mo.vstack([
+        mo.md(f"**foF2 ({_current_foF2} MHz)**"),
+        foF2_slider,
+        mo.md(f"<span style='color: {_color}; font-weight: bold;'>{_condition}</span>"),
+        mo.md(""),  # Spacer
+        mo.md(f"**Elevation Angle ({_current_elev}°)**"),
+        elevation_slider,
+    ])
+    return
 
 
 @app.cell
@@ -940,14 +1046,15 @@ def _(
 
     # Create frequency selection for hover highlighting
     _freq_selection_interactive = alt.selection_point(
-        fields=['frequency'],
+        fields=['label'],
         bind='legend',
         on='mouseover',
         nearest=True
     )
 
-    # Sort frequencies for legend ordering
-    _freq_order = sorted(_df_paths_interactive['frequency'].unique())
+    # Get unique labels and sort them numerically by frequency
+    _label_freq_map = _df_paths_interactive[['label', 'frequency']].drop_duplicates()
+    _sorted_labels = _label_freq_map.sort_values('frequency')['label'].tolist()
 
     # Create ray path chart
     _ray_chart_interactive = alt.Chart(_df_paths_interactive).mark_line(size=2.5).encode(
@@ -957,10 +1064,9 @@ def _(
         y=alt.Y('altitude_km:Q', 
                 title='Height above ground (km)',
                 scale=alt.Scale(domain=[0, 600])),
-        color=alt.Color('frequency:N',
-                       legend=alt.Legend(title='Frequency (MHz)', columns=1),
-                       scale=alt.Scale(scheme='category10'),
-                       sort=_freq_order),
+        color=alt.Color('label:N',
+                       legend=alt.Legend(title='Frequency (MHz)', columns=1, symbolStrokeWidth=4, symbolSize=200),
+                       scale=alt.Scale(scheme='category10', domain=_sorted_labels)),
         detail='frequency:N',
         opacity=alt.condition(_freq_selection_interactive, alt.value(1.0), alt.value(0.3)),
         strokeWidth=alt.condition(_freq_selection_interactive, alt.value(4), alt.value(2.5)),
@@ -985,13 +1091,13 @@ def _(
         ).encode(
             x='distance_km:Q',
             y='altitude_km:Q',
-            color=alt.Color('frequency:N', legend=None, scale=alt.Scale(scheme='category10'), sort=_freq_order),
+            color=alt.Color('label:N', legend=None, scale=alt.Scale(scheme='category10')),
             size=alt.condition(_freq_selection_interactive, alt.value(300), alt.value(150)),
             opacity=alt.condition(_freq_selection_interactive, alt.value(1.0), alt.value(0.7)),
             tooltip=[
                 alt.Tooltip('frequency:Q', title='Frequency (MHz)'),
                 alt.Tooltip('distance_km:Q', title='Skip Distance (km)', format='.0f'),
-                alt.Tooltip('status:N', title='Status')
+                alt.Tooltip('label:N', title='Status')
             ]
         ).add_params(
             _freq_selection_interactive
@@ -1093,7 +1199,7 @@ def _(
                            domain=['Excellent (<10dB)', 'Good (10-30dB)', 'Weak (30-60dB)', 'Very Weak (>60dB)'],
                            range=['green', 'orange', 'red', 'darkred']
                        ),
-                       legend=alt.Legend(title='Signal Strength')),
+                       legend=alt.Legend(title='Signal Strength', symbolStrokeWidth=4, symbolSize=200)),
         detail='frequency:N',
         opacity=alt.condition(_freq_selection, alt.value(1.0), alt.value(0.3)),
         strokeWidth=alt.condition(_freq_selection, alt.value(4), alt.value(2)),
@@ -1199,7 +1305,6 @@ def _(
 
 @app.cell
 def _():
-    # Export functions needed by new cell
     return
 
 
