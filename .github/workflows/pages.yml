@@ -19,11 +19,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
+      - name: Make repo importable
+        run: |
+          echo "PYTHONPATH=${GITHUB_WORKSPACE}:${PYTHONPATH}" >> $GITHUB_ENV
       - name: Install marimo
         run: pip install -U marimo
       - name: Export to WASM site
         run: |
-          export PYTHONPATH=$PWD
           marimo export html-wasm apps/condx.py -o site --mode run
           touch site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
