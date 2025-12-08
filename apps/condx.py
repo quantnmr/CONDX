@@ -17,7 +17,7 @@ app = marimo.App(width="medium", app_title="Modelling the Ionosphere")
 @app.cell
 def _():
     # Import required libraries for ionospheric HF radio wave propagation modeling
-
+    import sys
     from pathlib import Path
 
     script_dir = Path(__file__).resolve().parent
