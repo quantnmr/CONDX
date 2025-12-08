@@ -16,6 +16,7 @@ app = marimo.App(width="medium", app_title="Modelling the Ionosphere")
 
 @app.cell
 def _():
+    # Import required libraries for ionospheric HF radio wave propagation modeling
     import marimo as mo
     import numpy as np
     import matplotlib.pyplot as plt
@@ -27,23 +28,22 @@ def _():
 @app.cell
 def _(np):
     # ============================================================================
-    # PHYSICS MODEL - All functions from model.py
+    # PHYSICS MODEL (from model.py)
     # ============================================================================
-    
     # Physical constants
     R_E = 6371.0  # Earth radius in km
     c = 3.0e8     # Speed of light in m/s
     pi = np.pi
-    
+
     # ============================================================================
     # CHAPMAN LAYER FUNCTION
     # ============================================================================
-    
+
     def chapman_layer(z, Ne_max, h_m, H):
         """
         Calculate electron density profile for a single ionospheric layer
         using the Chapman function.
-        
+
         Parameters:
         -----------
         z : array-like
@@ -54,7 +54,7 @@ def _(np):
             Peak altitude in km
         H : float
             Scale height in km
-        
+
         Returns:
         --------
         Ne : ndarray
@@ -63,21 +63,21 @@ def _(np):
         xi = (z - h_m) / H
         Ne = Ne_max * np.exp(0.5 * (1 - xi - np.exp(-xi)))
         return Ne
-    
-    
+
+
     # ============================================================================
     # FOUR-LAYER IONOSPHERE MODEL
     # ============================================================================
-    
+
     def make_ionosphere_for_foF2(foF2_MHz):
         """
         Create a four-layer ionosphere model (D, E, F1, F2) based on foF2 value.
-        
+
         Parameters:
         -----------
         foF2_MHz : float
             Critical frequency of F2 layer in MHz
-        
+
         Returns:
         --------
         electron_density_func : function
@@ -87,12 +87,12 @@ def _(np):
         foF2_Hz = foF2_MHz * 1e6
         Ne_peak_cm3 = (foF2_Hz / 8.98e3) ** 2
         Ne_peak_m3 = Ne_peak_cm3 * 1e6
-        
+
         # F2 altitude varies with foF2 (higher foF2 → lower altitude)
         # Night: ~420 km, Day: ~260 km
         h_F2 = 420.0 - (foF2_MHz - 2.0) * 7.0
         h_F2 = max(250.0, min(420.0, h_F2))
-        
+
         # D layer strength (present during day, absent at night)
         if foF2_MHz < 5.0:
             D_factor = 0.0  # Night: no D layer
@@ -100,9 +100,9 @@ def _(np):
             D_factor = (foF2_MHz - 5.0) / 3.0  # Dawn/dusk transition
         else:
             D_factor = 1.0  # Day: full D layer
-        
+
         Ne_D_max = 1.5e9 * D_factor  # Calibrated to match real-world absorption
-        
+
         # F1 layer strength (daytime only)
         if foF2_MHz < 4.5:
             F1_factor = 0.0
@@ -110,19 +110,19 @@ def _(np):
             F1_factor = (foF2_MHz - 4.5) / 2.5
         else:
             F1_factor = 1.0
-        
+
         Ne_F1_max = 3e11 * F1_factor
-        
+
         # E layer strength (stronger during day)
         E_factor = 0.5 + 0.5 * min(1.0, foF2_MHz / 12.0)
         Ne_E_max = 8e10 * E_factor
-        
+
         # Layer parameters
         # D layer: 75 km peak, 8 km scale height
         # E layer: 110 km peak, 15 km scale height
         # F1 layer: 190 km peak, 30 km scale height
         # F2 layer: variable peak altitude, 55 km scale height
-        
+
         def electron_density(z):
             """Total electron density at altitude z (km)"""
             Ne_D = chapman_layer(z, Ne_D_max, 75.0, 8.0)
@@ -130,21 +130,21 @@ def _(np):
             Ne_F1 = chapman_layer(z, Ne_F1_max, 190.0, 30.0)
             Ne_F2 = chapman_layer(z, Ne_peak_m3, h_F2, 55.0)
             return Ne_D + Ne_E + Ne_F1 + Ne_F2
-        
+
         return electron_density
-    
-    
+
+
     # ============================================================================
     # 2D TILTED IONOSPHERE MODEL
     # ============================================================================
-    
+
     def make_tilted_ionosphere_2D(foF2_start_MHz, foF2_end_MHz, tilt_distance_km=3000.0):
         """
         Create a 2D ionosphere with horizontal foF2 gradient.
-        
+
         This models ionospheric tilts such as day/night terminator effects,
         where electron density varies along the propagation path.
-        
+
         Parameters:
         -----------
         foF2_start_MHz : float
@@ -153,7 +153,7 @@ def _(np):
             Critical frequency at receiver location (MHz)
         tilt_distance_km : float
             Distance over which gradient occurs (default 3000 km)
-        
+
         Returns:
         --------
         electron_density_func : function
@@ -162,14 +162,14 @@ def _(np):
         def electron_density_2D(z, x):
             """
             2D electron density function
-            
+
             Parameters:
             -----------
             z : float or array
                 Altitude in km
             x : float or array
                 Horizontal distance from transmitter in km
-            
+
             Returns:
             --------
             Ne : float or array
@@ -179,27 +179,27 @@ def _(np):
             foF2_local = foF2_start_MHz + (foF2_end_MHz - foF2_start_MHz) * (x / tilt_distance_km)
             foF2_local = np.clip(foF2_local, min(foF2_start_MHz, foF2_end_MHz), 
                                 max(foF2_start_MHz, foF2_end_MHz))
-            
+
             # Build ionosphere for local foF2
             local_ionosphere = make_ionosphere_for_foF2(foF2_local)
             return local_ionosphere(z)
-        
+
         return electron_density_2D
-    
-    
+
+
     # ============================================================================
     # PLASMA PHYSICS FUNCTIONS
     # ============================================================================
-    
+
     def plasma_frequency_Hz_from_Ne(Ne):
         """
         Calculate plasma frequency from electron density.
-        
+
         Parameters:
         -----------
         Ne : array-like
             Electron density in electrons/m³
-        
+
         Returns:
         --------
         f_p : ndarray
@@ -210,19 +210,19 @@ def _(np):
         Ne_cm3 = Ne / 1e6
         f_p = 8.98e3 * np.sqrt(Ne_cm3)
         return f_p
-    
-    
+
+
     def collision_frequency_Hz(z):
         """
         Calculate electron-neutral collision frequency at altitude z.
-        
+
         This calibrated profile matches real-world absorption measurements.
-        
+
         Parameters:
         -----------
         z : array-like
             Altitude in km
-        
+
         Returns:
         --------
         nu : ndarray
@@ -230,26 +230,26 @@ def _(np):
         """
         z = np.asarray(z)
         nu = np.zeros_like(z, dtype=float)
-        
+
         # D-layer region (< 90 km): High collision rate
         mask_D = z < 90.0
         nu[mask_D] = 3.5e5 * np.exp(-(z[mask_D] - 70.0) / 8.0)
-        
+
         # E/F region (90-150 km): Rapidly decreasing collisions
         mask_E = (z >= 90.0) & (z < 150.0)
         nu[mask_E] = 1e5 * np.exp(-(z[mask_E] - 90.0) / 20.0)
-        
+
         # High altitude (> 150 km): Negligible collisions
         mask_F = z >= 150.0
         nu[mask_F] = 1e3
-        
+
         return nu
-    
-    
+
+
     def make_refractive_index_func(electron_density_func, is_2D=False):
         """
         Create a refractive index function using the Appleton-Hartree equation.
-        
+
         Parameters:
         -----------
         electron_density_func : function
@@ -259,7 +259,7 @@ def _(np):
         is_2D : bool
             If True, electron_density_func expects (z, x) arguments
             If False, electron_density_func expects (z) argument only
-        
+
         Returns:
         --------
         refractive_index : function
@@ -269,7 +269,7 @@ def _(np):
         def refractive_index(f_Hz, z, x=0.0):
             """
             Complex refractive index from Appleton-Hartree equation.
-            
+
             Parameters:
             -----------
             f_Hz : float
@@ -278,7 +278,7 @@ def _(np):
                 Altitude in km
             x : float or array
                 Horizontal distance in km (only used in 2D mode)
-            
+
             Returns:
             --------
             n : complex or array of complex
@@ -289,44 +289,44 @@ def _(np):
                 Ne = electron_density_func(z, x)
             else:
                 Ne = electron_density_func(z)
-            
+
             # Calculate plasma frequency
             f_p = plasma_frequency_Hz_from_Ne(Ne)
-            
+
             # Calculate collision frequency
             nu = collision_frequency_Hz(z)
-            
+
             # Normalized parameters
             omega = 2 * pi * f_Hz
             omega_p = 2 * pi * f_p
             X = (omega_p / omega) ** 2
             Z = nu / omega
-            
+
             # Appleton-Hartree equation: n² = 1 - X/(1 - jZ)
             n_squared = 1.0 - X / (1.0 - 1j * Z)
-            
+
             # Take square root with correct branch
             # (positive real part for physical solution)
             n = np.sqrt(n_squared + 0j)
-            
+
             # Ensure positive real part
             n = np.where(np.real(n) < 0, -n, n)
-            
+
             return n
-        
+
         return refractive_index
-    
-    
+
+
     # ============================================================================
     # SPHERICAL RAY TRACING
     # ============================================================================
-    
+
     def trace_ray_spherical_with_path(f_MHz, elevation_deg, refractive_index_func, 
                                        max_distance_km=10000.0, step_km=2.0):
         """
         Trace a radio wave ray through the ionosphere in spherical geometry.
         Records the complete path for visualization.
-        
+
         Parameters:
         -----------
         f_MHz : float
@@ -339,7 +339,7 @@ def _(np):
             Maximum surface distance to trace (default 10000 km)
         step_km : float
             Step size for ray tracing (default 2 km)
-        
+
         Returns:
         --------
         x_path : ndarray
@@ -353,41 +353,41 @@ def _(np):
         """
         f_Hz = f_MHz * 1e6
         psi_0 = elevation_deg * pi / 180.0
-        
+
         # Initial conditions at Earth's surface
         r = R_E
         theta = 0.0
         n_0 = np.real(refractive_index_func(f_Hz, 0.0))
         b = n_0 * r * np.sin(psi_0)  # Ray parameter (conserved)
-        
+
         # Storage for path
         x_path = [0.0]
         z_path = [0.0]
-        
+
         # Ray direction tracking
         going_up = True
-        
+
         # Ray tracing loop
         for _ in range(int(max_distance_km / step_km)):
             z = r - R_E
-            
+
             # Check if returned to ground
             if z < 0 and len(x_path) > 10:
                 return np.array(x_path), np.array(z_path), "returns"
-            
+
             # Get refractive index at current position
             n = refractive_index_func(f_Hz, z)
             n_real = np.real(n)
             n_squared = n * n
             n2_real = np.real(n_squared)
-            
+
             # Check if ray is reflected (n² < 0 means total reflection)
             if n2_real <= 0:
                 going_up = False
-            
+
             # Calculate ray angle from ray parameter conservation
             sin_psi = b / (n_real * r)
-            
+
             # Check if ray reflects (sin > 1) or escapes (too high)
             if abs(sin_psi) >= 1.0:
                 if z > 600 and going_up:
@@ -396,33 +396,33 @@ def _(np):
                     # Reflection point - start coming back down
                     going_up = False
                     sin_psi = np.sign(sin_psi) * 0.999
-            
+
             if z > 800 and going_up:
                 return np.array(x_path), np.array(z_path), "escapes"
-            
+
             cos_psi = np.sqrt(1 - sin_psi**2)
-            
+
             # Step along ray (with direction: up or down)
             dr = step_km * cos_psi * (1 if going_up else -1)
             d_theta = step_km * sin_psi / r
-            
+
             r += dr
             theta += d_theta
-            
+
             x_path.append(R_E * theta)
             z_path.append(r - R_E)
-        
+
         return np.array(x_path), np.array(z_path), "stops"
-    
-    
+
+
     def trace_ray_with_absorption(f_MHz, elevation_deg, refractive_index_func,
                                   max_distance_km=10000.0, step_km=2.0):
         """
         Trace a radio wave ray and calculate absorption loss.
-        
+
         Uses the Sen-Wyller absorption formula to calculate path loss
         due to electron-neutral collisions in the ionosphere.
-        
+
         Parameters:
         -----------
         f_MHz : float
@@ -435,7 +435,7 @@ def _(np):
             Maximum surface distance to trace (default 10000 km)
         step_km : float
             Step size for ray tracing (default 2 km)
-        
+
         Returns:
         --------
         x_path : ndarray
@@ -450,49 +450,49 @@ def _(np):
         f_Hz = f_MHz * 1e6
         omega = 2 * pi * f_Hz
         psi_0 = elevation_deg * pi / 180.0
-        
+
         # Initial conditions
         r = R_E
         theta = 0.0
         n_0 = np.real(refractive_index_func(f_Hz, 0.0))
         b = n_0 * r * np.sin(psi_0)
-        
+
         # Storage
         x_path = [0.0]
         z_path = [0.0]
         total_loss_nepers = 0.0
-        
+
         # Ray direction tracking
         going_up = True
-        
+
         for _ in range(int(max_distance_km / step_km)):
             z = r - R_E
-            
+
             if z < 0 and len(x_path) > 10:
                 total_loss_dB = total_loss_nepers * 8.686  # Convert Nepers to dB
                 return np.array(x_path), np.array(z_path), "returns", total_loss_dB
-            
+
             # Get complex refractive index
             n = refractive_index_func(f_Hz, z)
             n_real = np.real(n)
             n_squared = n * n
             n2_real = np.real(n_squared)
-            
+
             # Check if ray is reflected
             if n2_real <= 0:
                 going_up = False
-            
+
             # Calculate absorption coefficient (Sen-Wyller formula)
             # α = (ω/2c) × |Im(n²)| / Re(n)
             alpha = (omega / (2 * c)) * abs(np.imag(n_squared)) / max(n_real, 1e-10)
-            
+
             # Accumulate loss (in Nepers)
             path_length_m = step_km * 1000.0
             total_loss_nepers += alpha * path_length_m
-            
+
             # Ray geometry
             sin_psi = b / (n_real * r)
-            
+
             if abs(sin_psi) >= 1.0:
                 if z > 600 and going_up:
                     total_loss_dB = total_loss_nepers * 8.686
@@ -500,39 +500,39 @@ def _(np):
                 else:
                     going_up = False
                     sin_psi = np.sign(sin_psi) * 0.999
-            
+
             if z > 800 and going_up:
                 total_loss_dB = total_loss_nepers * 8.686
                 return np.array(x_path), np.array(z_path), "escapes", total_loss_dB
-            
+
             cos_psi = np.sqrt(1 - sin_psi**2)
-            
+
             # Step along ray (with direction: up or down)
             dr = step_km * cos_psi * (1 if going_up else -1)
             d_theta = step_km * sin_psi / r
-            
+
             r += dr
             theta += d_theta
-            
+
             x_path.append(R_E * theta)
             z_path.append(r - R_E)
-        
+
         total_loss_dB = total_loss_nepers * 8.686
         return np.array(x_path), np.array(z_path), "stops", total_loss_dB
-    
-    
+
+
     # ============================================================================
     # 2D RAY TRACING WITH TILTS
     # ============================================================================
-    
+
     def trace_ray_2D_with_tilts(f_MHz, elevation_deg, refractive_index_func_2D,
                                max_distance_km=10000.0, step_km=2.0):
         """
         Trace a radio wave ray through a 2D tilted ionosphere.
-        
+
         This version handles horizontal refractive index gradients that cause
         off-great-circle propagation (azimuth deflection).
-        
+
         Parameters:
         -----------
         f_MHz : float
@@ -545,7 +545,7 @@ def _(np):
             Maximum surface distance to trace (default 10000 km)
         step_km : float
             Step size for ray tracing (default 2 km)
-        
+
         Returns:
         --------
         x_path : ndarray
@@ -559,41 +559,41 @@ def _(np):
         """
         f_Hz = f_MHz * 1e6
         psi_0 = elevation_deg * pi / 180.0
-        
+
         # Initial conditions
         r = R_E
         theta = 0.0
         x = 0.0  # Horizontal distance
         phi = 0.0  # Azimuth angle (radians)
-        
+
         n_0 = np.real(refractive_index_func_2D(f_Hz, 0.0, 0.0))
         b = n_0 * r * np.sin(psi_0)  # Ray parameter
-        
+
         # Storage
         x_path = [0.0]
         z_path = [0.0]
         phi_path = [0.0]
-        
+
         # Ray direction tracking
         going_up = True
-        
+
         for _ in range(int(max_distance_km / step_km)):
             z = r - R_E
-            
+
             if z < 0 and len(x_path) > 10:
                 return (np.array(x_path), np.array(z_path), 
                        np.array(phi_path) * 180.0 / pi, "returns")
-            
+
             # Get refractive index at current position
             n = refractive_index_func_2D(f_Hz, z, x)
             n_real = np.real(n)
             n_squared = n * n
             n2_real = np.real(n_squared)
-            
+
             # Check if ray is reflected
             if n2_real <= 0:
                 going_up = False
-            
+
             # Calculate horizontal gradient (dn/dx) for azimuth deflection
             dx_sample = 1.0  # km
             if x > 0:
@@ -603,10 +603,10 @@ def _(np):
             else:
                 n_plus = refractive_index_func_2D(f_Hz, z, x + dx_sample)
                 dn_dx = (np.real(n_plus) - n_real) / dx_sample
-            
+
             # Ray angle from ray parameter
             sin_psi = b / (n_real * r)
-            
+
             if abs(sin_psi) >= 1.0:
                 if z > 600 and going_up:
                     return (np.array(x_path), np.array(z_path),
@@ -614,13 +614,13 @@ def _(np):
                 else:
                     going_up = False
                     sin_psi = np.sign(sin_psi) * 0.999
-            
+
             if z > 800 and going_up:
                 return (np.array(x_path), np.array(z_path),
                        np.array(phi_path) * 180.0 / pi, "escapes")
-            
+
             cos_psi = np.sqrt(1 - sin_psi**2)
-            
+
             # Azimuth deflection from horizontal gradient
             # dphi/ds = -(1/n) × (dn/dx) / sin(psi)
             if abs(sin_psi) > 0.1:  # Avoid division by zero at high angles
@@ -628,32 +628,32 @@ def _(np):
                 dphi = dphi_ds * step_km
             else:
                 dphi = 0.0
-            
+
             # Step along ray (using spherical geometry with direction tracking)
             dr = step_km * cos_psi * (1 if going_up else -1)
             d_theta = step_km * sin_psi / r  # Angular distance along Earth's surface
-            
+
             r += dr
             theta += d_theta
             x += abs(d_theta * R_E)  # Horizontal coordinate follows spherical geometry
             phi += dphi
-            
+
             x_path.append(R_E * theta)
             z_path.append(r - R_E)
             phi_path.append(phi)
-        
+
         return (np.array(x_path), np.array(z_path),
                np.array(phi_path) * 180.0 / pi, "stops")
-    
-    
+
+
     def trace_ray_2D_with_absorption(f_MHz, elevation_deg, refractive_index_func_2D,
                                      max_distance_km=10000.0, step_km=2.0):
         """
         Trace a radio wave ray through a 2D tilted ionosphere with absorption tracking.
-        
+
         This version handles horizontal refractive index gradients (azimuth deflection)
         and calculates absorption loss using the Sen-Wyller formula.
-        
+
         Parameters:
         -----------
         f_MHz : float
@@ -666,7 +666,7 @@ def _(np):
             Maximum surface distance to trace (default 10000 km)
         step_km : float
             Step size for ray tracing (default 2 km)
-        
+
         Returns:
         --------
         x_path : ndarray
@@ -683,51 +683,51 @@ def _(np):
         f_Hz = f_MHz * 1e6
         omega = 2 * pi * f_Hz
         psi_0 = elevation_deg * pi / 180.0
-        
+
         # Initial conditions
         r = R_E
         theta = 0.0
         x = 0.0  # Horizontal distance
         phi = 0.0  # Azimuth angle (radians)
-        
+
         n_0 = np.real(refractive_index_func_2D(f_Hz, 0.0, 0.0))
         b = n_0 * r * np.sin(psi_0)  # Ray parameter
-        
+
         # Storage
         x_path = [0.0]
         z_path = [0.0]
         phi_path = [0.0]
         total_loss_nepers = 0.0
-        
+
         # Ray direction tracking
         going_up = True
-        
+
         for _ in range(int(max_distance_km / step_km)):
             z = r - R_E
-            
+
             if z < 0 and len(x_path) > 10:
                 total_loss_dB = total_loss_nepers * 8.686
                 return (np.array(x_path), np.array(z_path), 
                        np.array(phi_path) * 180.0 / pi, "returns", total_loss_dB)
-            
+
             # Get refractive index at current position
             n = refractive_index_func_2D(f_Hz, z, x)
             n_real = np.real(n)
             n_squared = n * n
             n2_real = np.real(n_squared)
-            
+
             # Calculate absorption coefficient (Sen-Wyller formula)
             # α = (ω/2c) × |Im(n²)| / Re(n)
             alpha = (omega / (2 * c)) * abs(np.imag(n_squared)) / max(n_real, 1e-10)
-            
+
             # Accumulate loss (in Nepers)
             path_length_m = step_km * 1000.0
             total_loss_nepers += alpha * path_length_m
-            
+
             # Check if ray is reflected
             if n2_real <= 0:
                 going_up = False
-            
+
             # Calculate horizontal gradient (dn/dx) for azimuth deflection
             dx_sample = 1.0  # km
             if x > 0:
@@ -737,10 +737,10 @@ def _(np):
             else:
                 n_plus = refractive_index_func_2D(f_Hz, z, x + dx_sample)
                 dn_dx = (np.real(n_plus) - n_real) / dx_sample
-            
+
             # Ray angle from ray parameter
             sin_psi = b / (n_real * r)
-            
+
             if abs(sin_psi) >= 1.0:
                 if z > 600 and going_up:
                     total_loss_dB = total_loss_nepers * 8.686
@@ -749,14 +749,14 @@ def _(np):
                 else:
                     going_up = False
                     sin_psi = np.sign(sin_psi) * 0.999
-            
+
             if z > 800 and going_up:
                 total_loss_dB = total_loss_nepers * 8.686
                 return (np.array(x_path), np.array(z_path),
                        np.array(phi_path) * 180.0 / pi, "escapes", total_loss_dB)
-            
+
             cos_psi = np.sqrt(1 - sin_psi**2)
-            
+
             # Azimuth deflection from horizontal gradient
             # dphi/ds = -(1/n) × (dn/dx) / sin(psi)
             if abs(sin_psi) > 0.1:  # Avoid division by zero at high angles
@@ -764,70 +764,69 @@ def _(np):
                 dphi = dphi_ds * step_km
             else:
                 dphi = 0.0
-            
+
             # Step along ray (using spherical geometry with direction tracking)
             dr = step_km * cos_psi * (1 if going_up else -1)
             d_theta = step_km * sin_psi / r  # Angular distance along Earth's surface
-            
+
             r += dr
             theta += d_theta
             x += abs(d_theta * R_E)  # Horizontal coordinate follows spherical geometry
             phi += dphi
-            
+
             x_path.append(R_E * theta)
             z_path.append(r - R_E)
             phi_path.append(phi)
-        
+
         total_loss_dB = total_loss_nepers * 8.686
         return (np.array(x_path), np.array(z_path),
                np.array(phi_path) * 180.0 / pi, "stops", total_loss_dB)
-    
+
+
     return (
-        R_E, c, pi,
-        chapman_layer,
-        make_ionosphere_for_foF2,
-        make_tilted_ionosphere_2D,
-        plasma_frequency_Hz_from_Ne,
-        collision_frequency_Hz,
-        make_refractive_index_func,
-        trace_ray_spherical_with_path,
-        trace_ray_with_absorption,
-        trace_ray_2D_with_tilts,
-        trace_ray_2D_with_absorption
+        R_E, c, pi, chapman_layer, make_ionosphere_for_foF2,
+        make_tilted_ionosphere_2D, plasma_frequency_Hz_from_Ne,
+        collision_frequency_Hz, make_refractive_index_func,
+        trace_ray_spherical_with_path, trace_ray_with_absorption,
+        trace_ray_2D_with_tilts, trace_ray_2D_with_absorption
     )
 
 
 @app.cell
-def _(alt, np, pd):
+def _(alt, pd, np):
     # ============================================================================
-    # PLOTTING FUNCTIONS - All functions from plots.py
+    # PLOTTING FUNCTIONS (from plots.py)
     # ============================================================================
-    
+    # ============================================================================
+    # CHART STYLING CONSTANTS
+    # ============================================================================
+
+    # Standard legend styling for consistency across all charts
     LEGEND_STYLE = {
         'symbolStrokeWidth': 4,
         'symbolSize': 200
     }
-    
+
     # Color schemes
     LAYER_COLORS = {
         'domain': ['D layer', 'E layer', 'F1 layer', 'F2 layer', 'Total'],
         'range': ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#000000']
     }
-    
+
     LOSS_COLORS = {
         'domain': ['Excellent (<10dB)', 'Good (10-30dB)', 'Weak (30-60dB)', 'Very Weak (>60dB)'],
         'range': ['green', 'orange', 'red', 'darkred']
     }
-    
+
     # ============================================================================
     # ELECTRON DENSITY & PLASMA FREQUENCY VISUALIZATION
     # ============================================================================
-    
+
     def plot_electron_density(z_array, Ne_D, Ne_E, Ne_F1, Ne_F2, Ne_total, 
                               fp_total, foF2):
         """
         Create electron density and plasma frequency visualization.
-        
+
         Parameters:
         -----------
         z_array : ndarray
@@ -840,7 +839,7 @@ def _(alt, np, pd):
             Plasma frequency in MHz
         foF2 : float
             Current foF2 value in MHz
-        
+
         Returns:
         --------
         chart : altair.Chart
@@ -854,15 +853,15 @@ def _(alt, np, pd):
             density_data.append({'altitude': z, 'density': Ne_F1[i] / 1e9, 'layer': 'F1 layer'})
             density_data.append({'altitude': z, 'density': Ne_F2[i] / 1e9, 'layer': 'F2 layer'})
             density_data.append({'altitude': z, 'density': Ne_total[i] / 1e9, 'layer': 'Total'})
-        
+
         df_density = pd.DataFrame(density_data)
-        
+
         # Prepare data for plasma frequency
         df_plasma = pd.DataFrame({
             'altitude': z_array,
             'plasma_freq': fp_total
         })
-        
+
         # Create layer selection for hover highlighting
         layer_selection = alt.selection_point(
             fields=['layer'],
@@ -870,7 +869,7 @@ def _(alt, np, pd):
             on='mouseover',
             nearest=True
         )
-        
+
         # Left chart: Electron density by layer
         density_chart = alt.Chart(df_density).mark_line(size=2).encode(
             x=alt.X('density:Q', 
@@ -906,24 +905,24 @@ def _(alt, np, pd):
             height=400,
             title=f'Ionospheric Layers (foF2 = {foF2} MHz)'
         )
-        
+
         # Add layer peak labels with bordered boxes
         idx_D = np.argmax(Ne_D)
         idx_E = np.argmax(Ne_E)
         idx_F1 = np.argmax(Ne_F1)
         idx_F2 = np.argmax(Ne_F2)
-        
+
         layer_labels_data = [
             {'density': Ne_D[idx_D] / 1e9, 'altitude': z_array[idx_D], 'label': 'D (~75 km)', 'color': '#1f77b4'},
             {'density': Ne_E[idx_E] / 1e9, 'altitude': z_array[idx_E], 'label': 'E (~110 km)', 'color': '#ff7f0e'},
             {'density': Ne_F1[idx_F1] / 1e9, 'altitude': z_array[idx_F1], 'label': 'F1 (~190 km)', 'color': '#2ca02c'},
             {'density': Ne_F2[idx_F2] / 1e9, 'altitude': z_array[idx_F2], 'label': 'F2 (~300 km)', 'color': '#d62728'}
         ]
-        
+
         # Create bordered label boxes
         box_width = df_density['density'].max() * 0.25
         box_height = 20
-        
+
         label_boxes_data = []
         for row in layer_labels_data:
             label_boxes_data.append({
@@ -936,9 +935,9 @@ def _(alt, np, pd):
                 'label': row['label'],
                 'color': row['color']
             })
-        
+
         df_label_boxes = pd.DataFrame(label_boxes_data)
-        
+
         label_boxes = alt.Chart(df_label_boxes).mark_rect(
             opacity=0.95,
             cornerRadius=4
@@ -951,7 +950,7 @@ def _(alt, np, pd):
             stroke=alt.Color('color:N', scale=None, legend=None),
             strokeWidth=alt.value(1.875)
         )
-        
+
         label_text = alt.Chart(df_label_boxes).mark_text(
             align='center',
             baseline='middle',
@@ -963,9 +962,9 @@ def _(alt, np, pd):
             text='label:N',
             color=alt.Color('color:N', scale=None, legend=None)
         )
-        
+
         density_chart_with_labels = density_chart + label_boxes + label_text
-        
+
         # Right chart: Plasma frequency profile
         plasma_chart = alt.Chart(df_plasma).mark_line(size=2.5, color='darkblue').encode(
             x=alt.X('plasma_freq:Q', 
@@ -984,7 +983,7 @@ def _(alt, np, pd):
             height=400,
             title='Plasma Frequency Profile'
         )
-        
+
         # Add foF2 reference line
         foF2_line = alt.Chart(pd.DataFrame({'foF2': [foF2]})).mark_rule(
             color='red',
@@ -993,7 +992,7 @@ def _(alt, np, pd):
         ).encode(
             x='foF2:Q'
         )
-        
+
         # Add peak annotation
         peak_idx = np.argmax(fp_total)
         peak_annotation = alt.Chart(pd.DataFrame([{
@@ -1009,19 +1008,19 @@ def _(alt, np, pd):
             y='altitude:Q',
             text='text:N'
         )
-        
+
         # Combine charts horizontally
         return density_chart_with_labels | (plasma_chart + foF2_line + peak_annotation)
-    
-    
+
+
     # ============================================================================
     # 2D TILT VISUALIZATION
     # ============================================================================
-    
+
     def plot_2D_tilts(ray_data_2D, foF2_start, foF2_end, elevation, tilt_distance_km):
         """
         Create 2D ionospheric tilt visualization (side view + top view).
-        
+
         Parameters:
         -----------
         ray_data_2D : list of dict
@@ -1034,7 +1033,7 @@ def _(alt, np, pd):
             Elevation angle in degrees
         tilt_distance_km : float
             Distance over which gradient is defined
-        
+
         Returns:
         --------
         chart : altair.Chart
@@ -1043,9 +1042,9 @@ def _(alt, np, pd):
         # Prepare data
         tilt_path_data = []
         tilt_endpoint_data = []
-        
+
         MAX_ALTITUDE = 600  # km - clip rays at this altitude
-        
+
         for ray in ray_data_2D:
             freq = ray['frequency']
             x_path = ray['x_path']
@@ -1053,7 +1052,7 @@ def _(alt, np, pd):
             phi_path = ray['phi_path']
             status = ray['status']
             label = f"{freq} MHz ({status})"
-            
+
             # Clip paths at 600 km altitude
             for idx, (x, z, phi) in enumerate(zip(x_path, z_path, phi_path)):
                 if z <= MAX_ALTITUDE:
@@ -1069,7 +1068,7 @@ def _(alt, np, pd):
                 else:
                     # Ray exceeded altitude limit, stop adding points
                     break
-            
+
             # Mark landing point (only if it's within altitude limit)
             if status == "returns" and z_path[-1] <= MAX_ALTITUDE:
                 tilt_endpoint_data.append({
@@ -1079,10 +1078,10 @@ def _(alt, np, pd):
                     'azimuth_deg': phi_path[-1],
                     'label': label
                 })
-        
+
         df_tilt_paths = pd.DataFrame(tilt_path_data)
         df_tilt_endpoints = pd.DataFrame(tilt_endpoint_data)
-        
+
         # Create frequency selection
         tilt_selection = alt.selection_point(
             fields=['label'],
@@ -1090,11 +1089,11 @@ def _(alt, np, pd):
             on='mouseover',
             nearest=True
         )
-        
+
         # Sort labels numerically
         tilt_label_freq_map = df_tilt_paths[['label', 'frequency']].drop_duplicates()
         tilt_sorted_labels = tilt_label_freq_map.sort_values('frequency')['label'].tolist()
-        
+
         # SIDE VIEW: Ray paths (altitude vs distance)
         side_view_chart = alt.Chart(df_tilt_paths).mark_line(size=2.5).encode(
             x=alt.X('distance_km:Q', 
@@ -1120,7 +1119,7 @@ def _(alt, np, pd):
             height=350,
             title=f'Side View: foF2 gradient from {foF2_start} MHz (TX) to {foF2_end} MHz (at {tilt_distance_km:.0f} km), elev={elevation}°'
         )
-        
+
         # Add endpoints to side view
         if len(df_tilt_endpoints) > 0:
             side_endpoints = alt.Chart(df_tilt_endpoints).mark_point(
@@ -1137,7 +1136,7 @@ def _(alt, np, pd):
             side_view_with_endpoints = side_view_chart + side_endpoints
         else:
             side_view_with_endpoints = side_view_chart
-        
+
         # TOP VIEW: Azimuth deflection
         top_view_chart = alt.Chart(df_tilt_paths).mark_line(size=2.5).encode(
             x=alt.X('distance_km:Q', 
@@ -1167,22 +1166,22 @@ def _(alt, np, pd):
             height=250,
             title='Top View: Off-Great-Circle Propagation'
         )
-        
+
         # Add zero line
         zero_line = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(
             strokeDash=[5, 5],
             color='gray'
         ).encode(y='y:Q')
-        
+
         top_view_with_zero = top_view_chart + zero_line
-        
+
         return side_view_with_endpoints & top_view_with_zero
-    
-    
+
+
     def plot_2D_side_view(ray_data_2D, foF2_start, foF2_end, elevation, tilt_distance_km):
         """
         Create 2D ionospheric tilt side view only (altitude vs distance).
-        
+
         Parameters:
         -----------
         ray_data_2D : list of dict
@@ -1195,7 +1194,7 @@ def _(alt, np, pd):
             Elevation angle in degrees
         tilt_distance_km : float
             Distance over which gradient is defined
-        
+
         Returns:
         --------
         chart : altair.Chart
@@ -1204,9 +1203,9 @@ def _(alt, np, pd):
         # Prepare data
         tilt_path_data = []
         tilt_endpoint_data = []
-        
+
         MAX_ALTITUDE = 600  # km - clip rays at this altitude
-        
+
         for ray in ray_data_2D:
             freq = ray['frequency']
             x_path = ray['x_path']
@@ -1214,7 +1213,7 @@ def _(alt, np, pd):
             phi_path = ray['phi_path']
             status = ray['status']
             label = f"{freq} MHz ({status})"
-            
+
             # Clip paths at 600 km altitude
             for idx, (x, z, phi) in enumerate(zip(x_path, z_path, phi_path)):
                 if z <= MAX_ALTITUDE:
@@ -1230,7 +1229,7 @@ def _(alt, np, pd):
                 else:
                     # Ray exceeded altitude limit, stop adding points
                     break
-            
+
             # Mark landing point (only if it's within altitude limit)
             if status == "returns" and z_path[-1] <= MAX_ALTITUDE:
                 tilt_endpoint_data.append({
@@ -1240,10 +1239,10 @@ def _(alt, np, pd):
                     'azimuth_deg': phi_path[-1],
                     'label': label
                 })
-        
+
         df_tilt_paths = pd.DataFrame(tilt_path_data)
         df_tilt_endpoints = pd.DataFrame(tilt_endpoint_data)
-        
+
         # Create frequency selection
         tilt_selection = alt.selection_point(
             fields=['label'],
@@ -1251,11 +1250,11 @@ def _(alt, np, pd):
             on='mouseover',
             nearest=True
         )
-        
+
         # Sort labels numerically
         tilt_label_freq_map = df_tilt_paths[['label', 'frequency']].drop_duplicates()
         tilt_sorted_labels = tilt_label_freq_map.sort_values('frequency')['label'].tolist()
-        
+
         # SIDE VIEW: Ray paths (altitude vs distance)
         side_view_chart = alt.Chart(df_tilt_paths).mark_line(size=2.5).encode(
             x=alt.X('distance_km:Q', 
@@ -1281,7 +1280,7 @@ def _(alt, np, pd):
             height=400,
             title=f'Side View: foF2 gradient from {foF2_start} MHz (TX) to {foF2_end} MHz (at {tilt_distance_km:.0f} km), elev={elevation}°'
         )
-        
+
         # Add endpoints to side view
         if len(df_tilt_endpoints) > 0:
             side_endpoints = alt.Chart(df_tilt_endpoints).mark_point(
@@ -1298,12 +1297,12 @@ def _(alt, np, pd):
             return side_view_chart + side_endpoints
         else:
             return side_view_chart
-    
-    
+
+
     def plot_2D_top_view(ray_data_2D, foF2_start, foF2_end, elevation, tilt_distance_km):
         """
         Create 2D ionospheric tilt top view only (azimuth deflection).
-        
+
         Parameters:
         -----------
         ray_data_2D : list of dict
@@ -1316,7 +1315,7 @@ def _(alt, np, pd):
             Elevation angle in degrees
         tilt_distance_km : float
             Distance over which gradient is defined
-        
+
         Returns:
         --------
         chart : altair.Chart
@@ -1324,9 +1323,9 @@ def _(alt, np, pd):
         """
         # Prepare data
         tilt_path_data = []
-        
+
         MAX_ALTITUDE = 600  # km - clip rays at this altitude
-        
+
         for ray in ray_data_2D:
             freq = ray['frequency']
             x_path = ray['x_path']
@@ -1334,7 +1333,7 @@ def _(alt, np, pd):
             phi_path = ray['phi_path']
             status = ray['status']
             label = f"{freq} MHz ({status})"
-            
+
             # Clip paths at 600 km altitude
             for idx, (x, z, phi) in enumerate(zip(x_path, z_path, phi_path)):
                 if z <= MAX_ALTITUDE:
@@ -1350,9 +1349,9 @@ def _(alt, np, pd):
                 else:
                     # Ray exceeded altitude limit, stop adding points
                     break
-        
+
         df_tilt_paths = pd.DataFrame(tilt_path_data)
-        
+
         # Create frequency selection
         tilt_selection = alt.selection_point(
             fields=['label'],
@@ -1360,11 +1359,11 @@ def _(alt, np, pd):
             on='mouseover',
             nearest=True
         )
-        
+
         # Sort labels numerically
         tilt_label_freq_map = df_tilt_paths[['label', 'frequency']].drop_duplicates()
         tilt_sorted_labels = tilt_label_freq_map.sort_values('frequency')['label'].tolist()
-        
+
         # TOP VIEW: Azimuth deflection
         top_view_chart = alt.Chart(df_tilt_paths).mark_line(size=2.5).encode(
             x=alt.X('distance_km:Q', 
@@ -1395,24 +1394,24 @@ def _(alt, np, pd):
             height=350,
             title=f'Top View: Off-Great-Circle Propagation (foF2 {foF2_start}→{foF2_end} MHz over {tilt_distance_km:.0f} km, elev={elevation}°)'
         )
-        
+
         # Add zero line
         zero_line = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(
             strokeDash=[5, 5],
             color='gray'
         ).encode(y='y:Q')
-        
+
         return top_view_chart + zero_line
-    
-    
+
+
     # ============================================================================
     # 2D ABSORPTION VISUALIZATION
     # ============================================================================
-    
+
     def plot_2D_absorption(ray_data_2D_absorption, foF2_start, foF2_end, elevation, tilt_distance_km):
         """
         Create 2D absorption visualization (side view with loss + bar chart).
-        
+
         Parameters:
         -----------
         ray_data_2D_absorption : list of dict
@@ -1425,7 +1424,7 @@ def _(alt, np, pd):
             Elevation angle in degrees
         tilt_distance_km : float
             Distance over which gradient is defined
-        
+
         Returns:
         --------
         chart : altair.Chart
@@ -1435,16 +1434,16 @@ def _(alt, np, pd):
         path_data = []
         endpoint_data = []
         loss_summary_data = []
-        
+
         MAX_ALTITUDE = 600  # km - clip rays at this altitude
-        
+
         for ray in ray_data_2D_absorption:
             freq = ray['frequency']
             x_path = ray['x_path']
             z_path = ray['z_path']
             status = ray['status']
             loss_dB = ray['loss_dB']
-            
+
             # Assign color category based on loss
             if loss_dB < 10:
                 loss_category = 'Excellent (<10dB)'
@@ -1454,7 +1453,7 @@ def _(alt, np, pd):
                 loss_category = 'Weak (30-60dB)'
             else:
                 loss_category = 'Very Weak (>60dB)'
-            
+
             # Clip paths at 600 km altitude
             for idx, (x, z) in enumerate(zip(x_path, z_path)):
                 if z <= MAX_ALTITUDE:
@@ -1470,7 +1469,7 @@ def _(alt, np, pd):
                 else:
                     # Ray exceeded altitude limit, stop adding points
                     break
-            
+
             # Mark endpoint (only if it's within altitude limit)
             if status == "returns" and z_path[-1] <= MAX_ALTITUDE:
                 endpoint_data.append({
@@ -1480,7 +1479,7 @@ def _(alt, np, pd):
                     'loss_dB': loss_dB,
                     'loss_category': loss_category
                 })
-                
+
                 # Add to summary for bar chart
                 loss_summary_data.append({
                     'frequency': freq,
@@ -1488,11 +1487,11 @@ def _(alt, np, pd):
                     'distance_km': x_path[-1],
                     'loss_category': loss_category
                 })
-        
+
         df_paths = pd.DataFrame(path_data)
         df_endpoints = pd.DataFrame(endpoint_data)
         df_loss = pd.DataFrame(loss_summary_data)
-        
+
         # Create frequency selection
         freq_selection = alt.selection_point(
             fields=['frequency'],
@@ -1500,7 +1499,7 @@ def _(alt, np, pd):
             on='mouseover',
             nearest=True
         )
-        
+
         # SIDE VIEW: Ray paths color-coded by absorption loss
         side_view_chart = alt.Chart(df_paths).mark_line(size=2.5).encode(
             x=alt.X('distance_km:Q', 
@@ -1527,7 +1526,7 @@ def _(alt, np, pd):
             height=350,
             title=f'Ray Paths with Absorption: foF2 {foF2_start}→{foF2_end} MHz over {tilt_distance_km:.0f} km, elev={elevation}°'
         )
-        
+
         # Add endpoints to side view
         if len(df_endpoints) > 0:
             side_endpoints = alt.Chart(df_endpoints).mark_point(
@@ -1544,7 +1543,7 @@ def _(alt, np, pd):
             side_view_with_endpoints = side_view_chart + side_endpoints
         else:
             side_view_with_endpoints = side_view_chart
-        
+
         # BAR CHART: Absorption loss by frequency
         if len(df_loss) > 0:
             bar_chart = alt.Chart(df_loss).mark_bar().encode(
@@ -1573,7 +1572,7 @@ def _(alt, np, pd):
                 height=250,
                 title='Absorption Loss by Frequency (hover to highlight)'
             )
-            
+
             # Add text labels on bars
             text = alt.Chart(df_loss).mark_text(
                 align='center',
@@ -1589,7 +1588,7 @@ def _(alt, np, pd):
             ).add_params(
                 freq_selection
             )
-            
+
             loss_chart = bar_chart + text
         else:
             # No data message
@@ -1603,15 +1602,13 @@ def _(alt, np, pd):
                 height=250,
                 title='Absorption Loss by Frequency'
             )
-        
+
         return side_view_with_endpoints & loss_chart
-    
+
+
     return (
-        LEGEND_STYLE, LAYER_COLORS, LOSS_COLORS,
-        plot_electron_density,
-        plot_2D_side_view,
-        plot_2D_top_view,
-        plot_2D_absorption
+        plot_electron_density, plot_2D_tilts, plot_2D_side_view,
+        plot_2D_top_view, plot_2D_absorption
     )
 
 
@@ -1732,6 +1729,7 @@ def _(mo):
     return
 
 
+
 @app.cell
 def _(mo):
     mo.md(r"""
@@ -1747,6 +1745,7 @@ def _(mo):
     The F2 layer peak density varies with the foF2 parameter (critical frequency). Higher foF2 means higher electron density, which allows higher radio frequencies to be reflected.
     """)
     return
+
 
 
 @app.cell
@@ -1810,6 +1809,7 @@ def _(
     return
 
 
+
 @app.cell
 def _(mo):
     # ============================================================================
@@ -1846,6 +1846,7 @@ def _(mo):
     return elevation_slider, foF2_slider
 
 
+
 @app.cell
 def _(elevation_slider, foF2_slider, mo):
     # ============================================================================
@@ -1877,6 +1878,7 @@ def _(elevation_slider, foF2_slider, mo):
         elevation_slider,
     ])
     return
+
 
 
 @app.cell
@@ -2011,6 +2013,7 @@ def _(
 
     _combined_chart_interactive
     return
+
 
 
 @app.cell
@@ -2213,6 +2216,7 @@ def _(
     return
 
 
+
 @app.cell
 def _(mo):
     # ============================================================================
@@ -2234,6 +2238,7 @@ def _(mo):
     ---
     """)
     return
+
 
 
 @app.cell
@@ -2301,6 +2306,7 @@ def _(mo):
     )
 
 
+
 @app.cell
 def _(
     elevation_slider_2D,
@@ -2336,6 +2342,7 @@ def _(
         elevation_slider_2D,
     ])
     return
+
 
 
 @app.cell
@@ -2386,11 +2393,6 @@ def _(
     return
 
 
-@app.cell
-def _():
-    # trace_ray_2D_with_absorption already imported above
-    return
-
 
 @app.cell
 def _(
@@ -2439,6 +2441,93 @@ def _(
     plot_2D_top_view(_ray_data_2D_azimuth, _azimuth_foF2_tx, _azimuth_foF2_dist, _azimuth_elev, _azimuth_distance)
     return
 
+
+
+@app.cell
+def _():
+    return
+
+
+
+@app.cell
+def _():
+    return
+
+
+
+@app.cell
+def _():
+    return
+
+
+
+@app.cell
+def _():
+    return
+
+
+
+@app.cell
+def _():
+    return
+
+
+
+@app.cell
+def _():
+    return
+
+
+if __name__ == "__main__":
+    app.run()
+
+
+@app.cell
+def _(
+    elevation_slider_2D,
+    foF2_at_distance_slider,
+    foF2_at_tx_slider,
+    make_refractive_index_func,
+    make_tilted_ionosphere_2D,
+    plot_2D_top_view,
+    tilt_distance_slider,
+    trace_ray_2D_with_tilts,
+):
+    # ============================================================================
+    # 2D IONOSPHERIC TILTS - TOP VIEW (AZIMUTH DEFLECTION)
+    # ============================================================================
+
+    # Get current slider values
+    _azimuth_foF2_tx = foF2_at_tx_slider.value
+    _azimuth_foF2_dist = foF2_at_distance_slider.value
+    _azimuth_distance = tilt_distance_slider.value
+    _azimuth_elev = elevation_slider_2D.value
+
+    # Build 2D tilted ionosphere with distance-based gradient
+    _azimuth_electron_density = make_tilted_ionosphere_2D(_azimuth_foF2_tx, _azimuth_foF2_dist, _azimuth_distance)
+    _azimuth_refractive_index = make_refractive_index_func(_azimuth_electron_density, is_2D=True)
+
+    # Trace rays for all HF frequencies
+    _azimuth_freqs = [1.8, 3.5, 5.3, 7.0, 10.1, 14.0, 18.068, 21.0, 24.89, 28.0]
+
+    # Collect ray data
+    _ray_data_2D_azimuth = []
+    for _f_azimuth in _azimuth_freqs:
+        _x_azimuth, _z_azimuth, _phi_azimuth, _status_azimuth = trace_ray_2D_with_tilts(
+            _f_azimuth, _azimuth_elev, _azimuth_refractive_index,
+            max_distance_km=8000.0, step_km=5.0
+        )
+        _ray_data_2D_azimuth.append({
+            'frequency': _f_azimuth,
+            'x_path': _x_azimuth,
+            'z_path': _z_azimuth,
+            'phi_path': _phi_azimuth,
+            'status': _status_azimuth
+        })
+
+    # Create top view visualization using plots module
+    plot_2D_top_view(_ray_data_2D_azimuth, _azimuth_foF2_tx, _azimuth_foF2_dist, _azimuth_elev, _azimuth_distance)
+    return
 
 @app.cell
 def _():
