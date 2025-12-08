@@ -18,7 +18,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - name: Set PYTHONPATH
-        run: export PYTHONPATH=$PWD
+        run: |
+          export PYTHONPATH=$PWD
+          pip install -e .
       - name: Install marimo
         run: pip install -U marimo
       - name: Export to WASM site
