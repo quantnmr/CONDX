@@ -17,19 +17,13 @@ app = marimo.App(width="medium", app_title="Modelling the Ionosphere")
 @app.cell
 def _():
     # Import required libraries for ionospheric HF radio wave propagation modeling
-    import sys
-    from pathlib import Path
-
-    script_dir = Path(__file__).resolve().parent
-    sys.path.insert(0, str(script_dir))
-    
     import marimo as mo
     import numpy as np
     import matplotlib.pyplot as plt
     import altair as alt
     import pandas as pd
-    import ./model
-    import ./plots
+    import model
+    import plots
     return alt, mo, np, pd, plots
 
 
