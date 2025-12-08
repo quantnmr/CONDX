@@ -22,8 +22,8 @@ def _():
     import matplotlib.pyplot as plt
     import altair as alt
     import pandas as pd
-    import model
-    import plots
+    import ./model
+    import ./plots
     return alt, mo, np, pd, plots
 
 
