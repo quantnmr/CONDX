@@ -13,6 +13,8 @@ concurrency: { group: "pages", cancel-in-progress: true }
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}  	# Add <repo root> to module search path
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
