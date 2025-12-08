@@ -20,113 +20,127 @@ def _():
     import marimo as mo
     import numpy as np
     import matplotlib.pyplot as plt
-    return mo, np
-
-
-@app.cell
-def _(np):
-    # Physical constants
-    c = 3.0e8         # Speed of light in m/s
-    pi = np.pi        
-    R_E = 6371.0      # Earth's radius in km (spherical Earth model)
-    return R_E, pi
+    import altair as alt
+    import pandas as pd
+    import model
+    import plots
+    return alt, mo, np, pd, plots
 
 
 @app.cell
 def _(mo):
-    mo.md(r"""
-    # Understanding HF Radio Wave Propagation Through the Ionosphere
+    # Main title always visible
+    _title = mo.md("# Understanding HF Radio Wave Propagation Through the Ionosphere")
 
-    ## Interactive Educational Notebook
+    # Collapsible introduction section (closed by default)
+    _introduction = mo.accordion({
+        "📖 Introduction & Physics Background (click to expand)": mo.md(r"""
+        ## Interactive Educational Notebook
 
-    This notebook demonstrates how **High Frequency (HF) radio waves** (1.8-30 MHz) propagate through Earth's ionosphere to enable long-distance communication. Use the interactive visualizations below to explore how different conditions affect radio propagation.
+        This notebook demonstrates how **High Frequency (HF) radio waves** (1.8-30 MHz) propagate through Earth's ionosphere to enable long-distance communication. Use the interactive visualizations below to explore how different conditions affect radio propagation.
 
-    ---
+        ---
 
-    ## Key Concepts
+        ## Key Concepts
 
-    **Ionospheric Skip Propagation:**
-    - HF radio waves launched from Earth's surface can **reflect off the ionosphere** (a layer of ionized atmosphere 60-600 km altitude)
-    - The wave "skips" back to Earth at a distant location, enabling over-the-horizon communication
-    - Skip distance depends on **frequency**, **launch angle**, and **ionospheric conditions**
+        **Ionospheric Skip Propagation:**
+        - HF radio waves launched from Earth's surface can **reflect off the ionosphere** (a layer of ionized atmosphere 60-600 km altitude)
+        - The wave "skips" back to Earth at a distant location, enabling over-the-horizon communication
+        - Skip distance depends on **frequency**, **launch angle**, and **ionospheric conditions**
 
-    **Critical Parameters:**
-    - **foF2 (critical frequency)**: Maximum frequency that can be reflected by the F2 layer at vertical incidence
-      - Higher foF2 → ionosphere can reflect higher frequencies
-      - Varies with solar activity, time of day, season (typical range: 2-25 MHz in this model)
-      - **Night** (2-5 MHz): D-layer absent, F2 layer at high altitude (~400 km)
-      - **Dawn/Dusk** (5-10 MHz): D-layer building, F1 layer emerging
-      - **Day** (10-25 MHz): All layers present, F2 layer at lower altitude (~260 km)
-    - **Elevation angle**: Launch angle of the radio wave above the horizon
-      - Low angles (5-20°) → long skip distances (2000+ km)
-      - High angles (60-85°) → short skip distances (< 500 km)
+        **Critical Parameters:**
+        - **foF2 (critical frequency)**: Maximum frequency that can be reflected by the F2 layer at vertical incidence
+          - Higher foF2 → ionosphere can reflect higher frequencies
+          - Varies with solar activity, time of day, season (typical range: 2-25 MHz in this model)
+          - **Night** (2-5 MHz): D-layer absent, F2 layer at high altitude (~400 km)
+          - **Dawn/Dusk** (5-10 MHz): D-layer building, F1 layer emerging
+          - **Day** (10-25 MHz): All layers present, F2 layer at lower altitude (~260 km)
+        - **Elevation angle**: Launch angle of the radio wave above the horizon
+          - Low angles (5-20°) → long skip distances (2000+ km)
+          - High angles (60-85°) → short skip distances (< 500 km)
 
-    ---
+        ---
 
-    ## The Physics Behind the Model
+        ## The Physics Behind the Model
 
-    ### 1. Refractive Index (Wave Bending & Absorption)
+        ### 1. Refractive Index (Wave Bending & Absorption)
 
-    The complex refractive index determines both wave bending and absorption using the **Appleton-Hartree equation**:
+        The complex refractive index determines both wave bending and absorption using the **Appleton-Hartree equation**:
 
-    $$n^2 = 1 - \frac{X}{1 - jZ}$$
+        $$n^2 = 1 - \frac{X}{1 - jZ}$$
 
-    where:
-    - $X = (\omega_p/\omega)^2$ = normalized plasma frequency (depends on electron density)
-    - $Z = \nu/\omega$ = normalized collision frequency (determines absorption)
-    - $\omega_p = 2\pi \cdot 8.98 \times 10^3 \sqrt{N_e}$ (plasma frequency from electron density $N_e$)
-    - $\nu(z)$ = altitude-dependent electron-neutral collision frequency
+        where:
+        - $X = (\omega_p/\omega)^2$ = normalized plasma frequency (depends on electron density)
+        - $Z = \nu/\omega$ = normalized collision frequency (determines absorption)
+        - $\omega_p = 2\pi \cdot 8.98 \times 10^3 \sqrt{N_e}$ (plasma frequency from electron density $N_e$)
+        - $\nu(z)$ = altitude-dependent electron-neutral collision frequency
 
-    ### 2. Snell's Law in Spherical Coordinates
+        ### 2. Snell's Law in Spherical Coordinates
 
-    The **ray parameter** $b = n \cdot r \cdot \sin(\psi)$ is conserved along the ray path, where:
-    - $n$ = refractive index
-    - $r$ = radial distance from Earth's center
-    - $\psi$ = angle between ray and radial direction
+        The **ray parameter** $b = n \cdot r \cdot \sin(\psi)$ is conserved along the ray path, where:
+        - $n$ = refractive index
+        - $r$ = radial distance from Earth's center
+        - $\psi$ = angle between ray and radial direction
 
-    As waves travel into regions of higher electron density, $n$ decreases. To conserve $b$, the ray bends. When $n^2 < 0$, the wave reflects back toward Earth.
+        As waves travel into regions of higher electron density, $n$ decreases. To conserve $b$, the ray bends. When $n^2 < 0$, the wave reflects back toward Earth.
 
-    ### 3. Absorption Loss (Sen-Wyller Formula)
+        ### 3. Absorption Loss (Sen-Wyller Formula)
 
-    Radio waves lose energy through collisions. The absorption coefficient is:
+        Radio waves lose energy through collisions. The absorption coefficient is:
 
-    $$\alpha = \frac{\omega}{2c} \cdot \frac{|\text{Im}(n^2)|}{\text{Re}(n)}$$
+        $$\alpha = \frac{\omega}{2c} \cdot \frac{|\text{Im}(n^2)|}{\text{Re}(n)}$$
 
-    Total path loss: $\text{Loss (dB)} = 8.686 \int \alpha(s) \, ds$
+        Total path loss: $\text{Loss (dB)} = 8.686 \int \alpha(s) \, ds$
 
-    Key behaviors (calibrated to match real-world measurements):
-    - **Lower frequencies** (1.8-7 MHz) suffer **more absorption** in D-layer (∝ 1/f²)
-    - **Mid-HF** (14-21 MHz) has **lowest loss** for long-distance paths
-    - **D-layer** (70-90 km) causes most absorption due to high collision frequency
+        Key behaviors (calibrated to match real-world measurements):
+        - **Lower frequencies** (1.8-7 MHz) suffer **more absorption** in D-layer (∝ 1/f²)
+        - **Mid-HF** (14-21 MHz) has **lowest loss** for long-distance paths
+        - **D-layer** (70-90 km) causes most absorption due to high collision frequency
 
-    ### 4. Chapman Layer Electron Density
+        ### 4. Chapman Layer Electron Density
 
-    Each ionospheric layer (D, E, F1, F2) uses the **Chapman function**:
+        Each ionospheric layer (D, E, F1, F2) uses the **Chapman function**:
 
-    $$N_e(z) = N_{max} \exp\left[\frac{1}{2}\left(1 - \xi - e^{-\xi}\right)\right]$$
+        $$N_e(z) = N_{max} \exp\left[\frac{1}{2}\left(1 - \xi - e^{-\xi}\right)\right]$$
 
-    where $\xi = (z - h_m)/H$ with $h_m$ = peak altitude, $H$ = scale height.
+        where $\xi = (z - h_m)/H$ with $h_m$ = peak altitude, $H$ = scale height.
 
-    ---
+        ---
 
-    ## How to Use This Notebook
+        ## How to Use This Notebook
 
-    **Below you'll find three interactive sections:**
+        **This notebook is divided into two parts:**
 
-    1. **Electron Density Profile** - Shows how electron density varies with altitude across the four ionospheric layers (D, E, F1, F2)
+        ### Part 1: 1D Model (Vertical Variations Only)
 
-    2. **Interactive Controls** - Sliders to adjust foF2 (ionospheric conditions) and elevation angle (launch angle)
+        1. **Electron Density Profile** - Shows how electron density varies with altitude across the four ionospheric layers (D, E, F1, F2)
+        2. **Interactive Controls** - Sliders to adjust foF2 (ionospheric conditions) and elevation angle (launch angle)
+        3. **Ray Path Visualization** - Shows how radio waves at different frequencies propagate through the ionosphere
+        4. **Signal Loss Analysis** - Displays absorption loss for each frequency with color-coded signal strength
 
-    3. **Ray Path Visualization** - Shows how radio waves at different frequencies propagate through the ionosphere
+        **Try experimenting with the sliders to see:**
+        - How higher foF2 allows higher frequencies to propagate
+        - How lower elevation angles create longer skip distances
+        - Why some frequencies work better than others (lower absorption loss)
+        - How rays at different frequencies bend differently through the ionosphere
 
-    4. **Signal Loss Analysis** - Displays absorption loss for each frequency with color-coded signal strength
+        ### Part 2: 2D Model (Horizontal Gradients)
 
-    **Try experimenting with the sliders to see:**
-    - How higher foF2 allows higher frequencies to propagate
-    - How lower elevation angles create longer skip distances
-    - Why some frequencies work better than others (lower absorption loss)
-    - How rays at different frequencies bend differently through the ionosphere
-    """)
+        The second part extends the model to include **horizontal ionospheric gradients** that create fascinating propagation effects:
+
+        5. **Ionospheric Tilts** - Model horizontal foF2 variations (day/night terminator, etc.)
+        6. **Off-Great-Circle Propagation** - Visualize how rays bend sideways when encountering horizontal gradients
+        7. **2D Absorption Loss** - See how signal strength varies through tilted ionosphere
+
+        **Try experimenting with the 2D sliders to see:**
+        - Day/night terminator effects (15 MHz → 4 MHz over 3000 km)
+        - Off-great-circle propagation (sideways ray bending)
+        - How horizontal gradients affect absorption loss
+        - Pedersen ray behavior with high elevation angles
+        """)
+    })
+
+    mo.vstack([_title, _introduction])
     return
 
 
@@ -149,13 +163,12 @@ def _(mo):
 
 @app.cell
 def _(
-    alt,
     chapman_layer,
     foF2_slider,
     make_ionosphere_for_foF2,
     np,
-    pd,
     plasma_frequency_Hz_from_Ne,
+    plots,
 ):
     # Get current foF2 value from slider
     _density_foF2 = foF2_slider.value
@@ -171,16 +184,10 @@ def _(
     # Generate altitude array
     _z_array = np.linspace(0, 600, 1000)
 
-    # ========================================================================
-    # Calculate layer parameters using the SAME logic as make_ionosphere_for_foF2
-    # This ensures individual layers sum to the Total line
-    # ========================================================================
-
-    # F2 altitude (matches function)
+    # Calculate layer parameters matching make_ionosphere_for_foF2
     _h_F2 = 420.0 - (_density_foF2 - 2.0) * 7.0
     _h_F2 = max(250.0, min(420.0, _h_F2))
 
-    # D layer strength (matches function)
     if _density_foF2 < 5.0:
         _D_factor = 0.0
     elif _density_foF2 < 8.0:
@@ -189,7 +196,6 @@ def _(
         _D_factor = 1.0
     _Ne_D_max = 1.5e9 * _D_factor
 
-    # F1 layer strength (matches function)
     if _density_foF2 < 4.5:
         _F1_factor = 0.0
     elif _density_foF2 < 7.0:
@@ -198,755 +204,83 @@ def _(
         _F1_factor = 1.0
     _Ne_F1_max = 3e11 * _F1_factor
 
-    # E layer strength (matches function)
     _E_factor = 0.5 + 0.5 * min(1.0, _density_foF2 / 12.0)
     _Ne_E_max = 8e10 * _E_factor
 
-    # Calculate individual layer contributions with variable parameters
+    # Calculate individual layer contributions
     _Ne_D = chapman_layer(_z_array, _Ne_D_max, 75.0, 8.0)
     _Ne_E = chapman_layer(_z_array, _Ne_E_max, 110.0, 15.0)
     _Ne_F1 = chapman_layer(_z_array, _Ne_F1_max, 190.0, 30.0)
     _Ne_F2 = chapman_layer(_z_array, _Ne_peak_m3, _h_F2, 55.0)
     _Ne_total = _total_density_func(_z_array)
 
-    # Also calculate plasma frequency for reference
+    # Calculate plasma frequency
     _fp_total = plasma_frequency_Hz_from_Ne(_Ne_total) / 1e6  # Convert to MHz
 
-    # Prepare data for Altair - electron density by layer
-    _density_data = []
-    for _i, _z in enumerate(_z_array):
-        _density_data.append({'altitude': _z, 'density': _Ne_D[_i] / 1e9, 'layer': 'D layer'})
-        _density_data.append({'altitude': _z, 'density': _Ne_E[_i] / 1e9, 'layer': 'E layer'})
-        _density_data.append({'altitude': _z, 'density': _Ne_F1[_i] / 1e9, 'layer': 'F1 layer'})
-        _density_data.append({'altitude': _z, 'density': _Ne_F2[_i] / 1e9, 'layer': 'F2 layer'})
-        _density_data.append({'altitude': _z, 'density': _Ne_total[_i] / 1e9, 'layer': 'Total'})
-
-    _df_density = pd.DataFrame(_density_data)
-
-    # Prepare data for plasma frequency plot (single curve, not multiple layers)
-    _df_plasma = pd.DataFrame({
-        'altitude': _z_array,
-        'plasma_freq': _fp_total
-    })
-
-    # Create layer selection for hover highlighting
-    _layer_selection = alt.selection_point(
-        fields=['layer'],
-        bind='legend',
-        on='mouseover',
-        nearest=True
-    )
-
-    # Left chart: Electron density by layer
-    _density_chart = alt.Chart(_df_density).mark_line(size=2).encode(
-        x=alt.X('density:Q', 
-                title='Electron Density (× 10⁹ electrons/m³)',
-                scale=alt.Scale(domain=[0, _df_density['density'].max() * 1.05])),
-        y=alt.Y('altitude:Q', 
-                title='Altitude (km)',
-                scale=alt.Scale(domain=[0, 600])),
-        color=alt.Color('layer:N',
-                       legend=alt.Legend(title='Layer', symbolStrokeWidth=4, symbolSize=200),
-                       scale=alt.Scale(
-                           domain=['D layer', 'E layer', 'F1 layer', 'F2 layer', 'Total'],
-                           range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#000000']
-                       )),
-        strokeDash=alt.condition(
-            alt.datum.layer == 'Total',
-            alt.value([5, 5]),
-            alt.value([0])
-        ),
-        strokeWidth=alt.condition(
-            alt.datum.layer == 'Total',
-            alt.value(3),
-            alt.value(2)
-        ),
-        opacity=alt.condition(_layer_selection, alt.value(1.0), alt.value(0.3)),
-        detail='layer:N',
-        tooltip=[
-            alt.Tooltip('layer:N', title='Layer'),
-            alt.Tooltip('altitude:Q', title='Altitude (km)', format='.0f'),
-            alt.Tooltip('density:Q', title='Density (×10⁹ e/m³)', format='.3f')
-        ]
-    ).add_params(
-        _layer_selection
-    ).properties(
-        width=400,
-        height=400,
-        title=f'Ionospheric Layers (foF2 = {_density_foF2} MHz)'
-    )
-
-    # Add layer peak labels
-    _idx_D = np.argmax(_Ne_D)
-    _idx_E = np.argmax(_Ne_E)
-    _idx_F1 = np.argmax(_Ne_F1)
-    _idx_F2 = np.argmax(_Ne_F2)
-
-    _layer_labels = pd.DataFrame([
-        {'density': _Ne_D[_idx_D] / 1e9, 'altitude': _z_array[_idx_D], 'label': 'D (~75 km)', 'color': '#1f77b4'},
-        {'density': _Ne_E[_idx_E] / 1e9, 'altitude': _z_array[_idx_E], 'label': 'E (~110 km)', 'color': '#ff7f0e'},
-        {'density': _Ne_F1[_idx_F1] / 1e9, 'altitude': _z_array[_idx_F1], 'label': 'F1 (~190 km)', 'color': '#2ca02c'},
-        {'density': _Ne_F2[_idx_F2] / 1e9, 'altitude': _z_array[_idx_F2], 'label': 'F2 (~300 km)', 'color': '#d62728'}
-    ])
-
-    # Create bordered label boxes with text
-    # Add computed box coordinates
-    _box_width_val = _df_density['density'].max() * 0.25
-    _box_height_val = 20
-
-    _layer_labels_boxes = []
-    for _, row in _layer_labels.iterrows():
-        _layer_labels_boxes.append({
-            'x_min': row['density'] + 2,
-            'x_max': row['density'] + _box_width_val,
-            'y_min': row['altitude'] - _box_height_val / 2,
-            'y_max': row['altitude'] + _box_height_val / 2,
-            'x_center': row['density'] + _box_width_val / 2,
-            'y_center': row['altitude'],
-            'label': row['label'],
-            'color': row['color']
-        })
-    _df_label_boxes = pd.DataFrame(_layer_labels_boxes)
-
-    # Create background boxes
-    _label_boxes = alt.Chart(_df_label_boxes).mark_rect(
-        opacity=0.95,
-        cornerRadius=4
-    ).encode(
-        x=alt.X('x_min:Q'),
-        x2='x_max:Q',
-        y=alt.Y('y_min:Q'),
-        y2='y_max:Q',
-        color=alt.value('white'),
-        stroke=alt.Color('color:N', scale=None, legend=None),
-        strokeWidth=alt.value(1.875)
-    )
-
-    _label_text = alt.Chart(_df_label_boxes).mark_text(
-        align='center',
-        baseline='middle',
-        fontSize=12,
-        fontWeight='bold'
-    ).encode(
-        x='x_center:Q',
-        y='y_center:Q',
-        text='label:N',
-        color=alt.Color('color:N', scale=None, legend=None)
-    )
-
-    _density_chart_with_labels = _density_chart + _label_boxes + _label_text
-
-    # Right chart: Plasma frequency profile (explicitly sort and use order encoding)
-    _plasma_chart = alt.Chart(_df_plasma).mark_line(size=2.5, color='darkblue').encode(
-        x=alt.X('plasma_freq:Q', 
-                title='Plasma Frequency (MHz)',
-                scale=alt.Scale(domain=[0, _df_plasma['plasma_freq'].max() * 1.05])),
-        y=alt.Y('altitude:Q', 
-                title='Altitude (km)',
-                scale=alt.Scale(domain=[0, 600])),
-        order='altitude:Q',
-        tooltip=[
-            alt.Tooltip('altitude:Q', title='Altitude (km)', format='.0f'),
-            alt.Tooltip('plasma_freq:Q', title='Plasma Freq (MHz)', format='.2f')
-        ]
-    ).properties(
-        width=400,
-        height=400,
-        title='Plasma Frequency Profile'
-    )
-
-    # Add foF2 reference line
-    _foF2_line = alt.Chart(pd.DataFrame({'foF2': [_density_foF2]})).mark_rule(
-        color='red',
-        strokeDash=[5, 5],
-        size=2
-    ).encode(
-        x='foF2:Q'
-    )
-
-    # Add peak annotation
-    _peak_idx = np.argmax(_fp_total)
-    _peak_annotation = alt.Chart(pd.DataFrame([{
-        'plasma_freq': _df_plasma['plasma_freq'].max() * 0.3,
-        'altitude': 100,
-        'text': f'Peak: {_fp_total.max():.1f} MHz\nat {_z_array[_peak_idx]:.0f} km\n\nfoF2 = {_density_foF2} MHz (red line)'
-    }])).mark_text(
-        align='left',
-        fontSize=11,
-        dx=5
-    ).encode(
-        x='plasma_freq:Q',
-        y='altitude:Q',
-        text='text:N'
-    )
-
-    # Combine charts horizontally
-    (_density_chart_with_labels | (_plasma_chart + _foF2_line + _peak_annotation))
+    # Use plots module to create visualization
+    plots.plot_electron_density(_z_array, _Ne_D, _Ne_E, _Ne_F1, _Ne_F2, _Ne_total, _fp_total, _density_foF2)
     return
 
 
 @app.cell
-def _(R_E, np, pi):
-    # ============================================================================
-    # IONOSPHERE MODEL FUNCTIONS
-    # ============================================================================
-
-    def chapman_layer(z_km, Nmax, hm, H):
-        """
-        Chapman layer function - models electron density profile for a single ionospheric layer.
-
-        The Chapman function describes how electron density varies with altitude in a layer
-        that's produced by solar radiation absorption in the atmosphere.
-
-        Parameters:
-        -----------
-        z_km : array-like
-            Altitude in km
-        Nmax : float
-            Peak electron density in electrons/m^3
-        hm : float
-            Peak altitude in km (where maximum density occurs)
-        H : float
-            Scale height in km (controls layer thickness/width)
-
-        Returns:
-        --------
-        Ne : array
-            Electron density in electrons/m^3 at each altitude
-        """
-        z = np.asarray(z_km)
-        xi = (z - hm) / H
-        Ne = Nmax * np.exp(0.5 * (1.0 - xi - np.exp(-xi)))
-        Ne[z < 0] = 0.0  # No ionosphere below ground level
-        return Ne
-
-    def make_ionosphere_for_foF2(foF2_MHz):
-        """
-        Constructs a realistic 4-layer ionosphere model where foF2 drives all layer characteristics.
-
-        This model implements smooth transitions between night-like, transition, and day-like conditions:
-        - Low foF2 (2-5 MHz): Night conditions - high F2 altitude, no D layer, weak/no F1
-        - Medium foF2 (5-10 MHz): Transition/dawn/dusk - intermediate conditions
-        - High foF2 (10-25 MHz): Day/high solar activity - low F2 altitude, strong D and F1 layers
-
-        Parameters:
-        -----------
-        foF2_MHz : float
-            Critical frequency of F2 layer in MHz. This parameter drives the entire ionospheric
-            state including layer altitudes, densities, and presence. Range: 2-25 MHz
-            - Night/low solar: 2-5 MHz → high F2 altitude, no D layer
-            - Day/moderate: 6-12 MHz → intermediate conditions
-            - Day/high solar: 12-25 MHz → low F2 altitude, strong D layer
-
-        Returns:
-        --------
-        total_electron_density : function
-            Function that takes altitude z_km and returns total electron density
-        """
-        # Convert foF2 to F2 peak electron density using plasma frequency relation
-        # fp(MHz) = 8.98 * sqrt(Ne_cm3), so Ne = (fp/8.98)^2
-        foF2_Hz = foF2_MHz * 1e6
-        Ne_peak_cm3 = (foF2_Hz / 8.98e3) ** 2
-        Ne_peak_m3 = Ne_peak_cm3 * 1e6
-
-        # ========================================================================
-        # foF2-DRIVEN LAYER PARAMETERS
-        # ========================================================================
-        # Lower foF2 → nighttime → higher F2 altitude, weaker/absent lower layers
-        # Higher foF2 → daytime → lower F2 altitude, stronger lower layers
-
-        # F2 peak altitude: varies inversely with foF2
-        # Night (low foF2): ~400 km, Day (high foF2): ~250-280 km
-        h_F2 = 420.0 - (foF2_MHz - 2.0) * 7.0  # Linear decrease from 406 km @ 2 MHz to 259 km @ 25 MHz
-        h_F2 = max(250.0, min(420.0, h_F2))     # Clamp to realistic range
-
-        # D layer strength: absent at night, strong during day
-        # Smooth transition using sigmoid-like function
-        if foF2_MHz < 5.0:
-            # Night: D layer essentially absent
-            D_factor = 0.0
-        elif foF2_MHz < 8.0:
-            # Dawn/dusk transition: D layer building
-            D_factor = (foF2_MHz - 5.0) / 3.0  # Linear ramp from 0 to 1 over 5-8 MHz
-        else:
-            # Day: D layer fully present
-            D_factor = 1.0
-
-        Ne_D_max = 1.5e9 * D_factor  # D layer peak density (0 at night, 1.5e9 during day)
-
-        # F1 layer strength: weak/absent at night, present during day
-        if foF2_MHz < 4.5:
-            # Night: F1 merged with F2, essentially absent as separate layer
-            F1_factor = 0.0
-        elif foF2_MHz < 7.0:
-            # Transition: F1 layer separating from F2
-            F1_factor = (foF2_MHz - 4.5) / 2.5  # Linear ramp from 0 to 1 over 4.5-7 MHz
-        else:
-            # Day: F1 layer fully formed
-            F1_factor = 1.0
-
-        Ne_F1_max = 3e11 * F1_factor  # F1 layer peak density
-
-        # E layer: always present but varies in strength
-        # Weaker at night, stronger during day
-        E_factor = 0.5 + 0.5 * min(1.0, foF2_MHz / 12.0)  # Varies from 0.5 to 1.0
-        Ne_E_max = 8e10 * E_factor
-
-        def total_electron_density(z_km):
-            """
-            Returns total electron density by summing all four ionospheric layers.
-
-            Layer parameters vary with foF2:
-            - D layer:  Variable density (0 at night, 1.5e9 during day), 75 km peak, 8 km scale
-            - E layer:  Variable density (4e10 to 8e10), 110 km peak, 15 km scale  
-            - F1 layer: Variable density (0 at night, 3e11 during day), 190 km peak, 30 km scale
-            - F2 layer: Variable density (from foF2), variable altitude (250-420 km), 55 km scale
-            """
-            z = np.asarray(z_km)
-            Ne_total = (
-                chapman_layer(z, Ne_D_max, 75.0, 8.0) +      # D layer: absent at night, strong during day
-                chapman_layer(z, Ne_E_max, 110.0, 15.0) +    # E layer: always present, varies in strength
-                chapman_layer(z, Ne_F1_max, 190.0, 30.0) +   # F1 layer: absent at night, present during day
-                chapman_layer(z, Ne_peak_m3, h_F2, 55.0)     # F2 layer: variable altitude and density
-            )
-            return Ne_total
-
-        return total_electron_density
-
-    def plasma_frequency_Hz_from_Ne(Ne_m3):
-        """
-        Calculate plasma frequency from electron density.
-
-        The plasma frequency is the natural oscillation frequency of electrons in the
-        ionosphere. Radio waves below the plasma frequency are reflected.
-
-        Formula: fp(Hz) = 8.98e3 * sqrt(Ne_cm³)
-
-        Parameters:
-        -----------
-        Ne_m3 : float or array
-            Electron density in electrons/m³
-
-        Returns:
-        --------
-        fp : float or array
-            Plasma frequency in Hz
-        """
-        Ne_cm3 = Ne_m3 * 1e-6
-        return 8.98e3 * np.sqrt(Ne_cm3)
-
-    def collision_frequency_Hz(z_km):
-        """
-        Calculate electron-neutral collision frequency (affects radio wave absorption).
-
-        Collisions between electrons and neutral particles cause radio wave energy loss.
-        Higher collision rates → more absorption. Collision frequency decreases rapidly
-        with altitude as the atmosphere thins.
-
-        Based on literature: typical D-layer collision frequency ~1-2×10^7 Hz at 70-80 km
-
-        Parameters:
-        -----------
-        z_km : float or array
-            Altitude in km
-
-        Returns:
-        --------
-        nu : float or array
-            Collision frequency in Hz
-        """
-        z = np.asarray(z_km)
-        nu = np.zeros_like(z, dtype=float)
-        # Below 90 km (D-layer region): high collisions, exponentially decreasing
-        # This is where most absorption occurs for low frequencies
-        # Calibrated to match real-world absorption: ~35 dB at 1.8 MHz, ~25 dB at 3.5 MHz
-        mask_low = z < 90.0
-        nu[mask_low] = 3.5e5 * np.exp(-(z[mask_low] - 70.0) / 8.0)
-        # 90-150 km: rapidly decreasing collisions
-        mask_mid = (z >= 90.0) & (z < 150.0)
-        nu[mask_mid] = 1e5 * np.exp(-(z[mask_mid] - 90.0) / 20.0)
-        # Above 150 km: very low collision rate (negligible absorption)
-        nu[z >= 150.0] = 1e3
-        return nu
-
-    def make_refractive_index_func(total_electron_density):
-        """
-        Creates a function to calculate the complex refractive index of the ionosphere.
-
-        The refractive index determines how radio waves bend and are absorbed as they
-        propagate through the ionosphere. It depends on:
-        - Electron density (plasma frequency)
-        - Radio wave frequency
-        - Collision frequency (absorption)
-
-        Returns:
-        --------
-        refractive_index_complex : function
-            Function that takes (z_km, f_Hz) and returns (n, n²) as complex values
-        """
-        def refractive_index_complex(z_km, f_Hz):
-            """
-            Calculate complex refractive index using Appleton-Hartree equation (simplified).
-
-            The real part of n determines ray bending (refraction)
-            The imaginary part determines absorption
-
-            When n² < 0, the wave cannot propagate (reflection occurs)
-            """
-            Ne = total_electron_density(z_km)
-            fp = plasma_frequency_Hz_from_Ne(Ne)
-            omega_p = 2.0 * pi * fp  # Angular plasma frequency
-            omega = 2.0 * pi * f_Hz   # Angular wave frequency
-
-            X = (omega_p / omega) ** 2  # Normalized plasma frequency
-            nu = collision_frequency_Hz(z_km)
-            Z = nu / omega               # Normalized collision frequency
-
-            # Appleton-Hartree formula (no magnetic field, ordinary wave)
-            n2 = 1.0 - X / (1.0 - 1j * Z)
-
-            # Prevent numerical issues with very small refractive indices
-            n2 = np.where(np.real(n2) > 1e-6, n2, 1e-6 + 0j)
-            n = np.sqrt(n2)
-            return n, n2
-        return refractive_index_complex
-
-    # ============================================================================
-    # RAY TRACING FUNCTION
-    # ============================================================================
-
-    def trace_ray_spherical_fast(f_MHz, elev_deg, refractive_index_complex,
-                                  s_max_km=6000.0, ds_km=10.0, z_top_km=600.0):
-        """
-        Trace an HF radio ray through the ionosphere using spherical geometry.
-
-        This function simulates the path of a radio wave launched from Earth's surface
-        at a given elevation angle and frequency. It uses Snell's law in spherical
-        coordinates to determine how the wave bends through the varying ionosphere.
-
-        Parameters:
-        -----------
-        f_MHz : float
-            Radio frequency in MHz
-        elev_deg : float
-            Launch elevation angle in degrees (0° = horizontal, 90° = vertical)
-        refractive_index_complex : function
-            Function to calculate refractive index at any altitude
-        s_max_km : float
-            Maximum ray path length in km before giving up
-        ds_km : float
-            Step size for ray tracing in km
-        z_top_km : float
-            Altitude above which ray is considered to have escaped
-
-        Returns:
-        --------
-        distance : float
-            Great circle distance traveled (skip distance) in km
-        status : str
-            "returns" = ray returned to Earth (successful skip)
-            "escapes" = ray passed through ionosphere without returning
-            "stops" = ray was absorbed or max distance reached
-        """
-        f_Hz = f_MHz * 1e6
-
-        # Initial position in spherical coordinates (r, theta)
-        r = R_E           # Start at Earth's surface
-        theta = 0.0       # Angular position along Earth
-
-        # Calculate ray parameter b = n*r*sin(ψ) (conserved by Snell's law in spherical geometry)
-        # ψ is the angle between the ray and the radial direction
-        psi0 = np.radians(90.0 - elev_deg)  # Convert elevation to ray angle
-        n0_arr, _ = refractive_index_complex(np.array([0.0]), f_Hz)
-        b = float(np.real(n0_arr[0])) * r * np.sin(psi0)  # Ray parameter (constant along path)
-
-        s = 0.0           # Path length traveled
-        going_up = True   # Ray initially going upward
-
-        # Step along ray path
-        while s < s_max_km:
-            z = r - R_E   # Current altitude
-
-            # Check if ray has returned to ground
-            if z < 0:
-                break
-
-            # Get refractive index at current altitude
-            n_arr, n2_arr = refractive_index_complex(np.array([z]), f_Hz)
-            n_r = float(np.real(n_arr[0]))
-            n2_r = float(np.real(n2_arr[0]))
-
-            # If n² ≤ 0, wave cannot propagate → reflection point
-            if n2_r <= 0:
-                going_up = False
-
-            # Apply Snell's law: sin(ψ) = b/(n*r)
-            sin_psi = b / (n_r * r)
-            if abs(sin_psi) >= 1:  # Ray turning around (reflection)
-                going_up = False
-                sin_psi = np.sign(sin_psi) * 0.999  # Clamp to valid range
-
-            cos_psi = np.sqrt(1.0 - sin_psi**2)
-
-            # Calculate incremental changes in position
-            dr = ds_km * cos_psi * (1 if going_up else -1)  # Radial step
-            dtheta = ds_km * sin_psi / r                     # Angular step
-
-            r_new = r + dr
-            theta_new = theta + dtheta
-
-            # Check if ray has returned to Earth's surface
-            if not going_up and r_new < R_E:
-                # Interpolate exact ground intersection point
-                frac = (r - R_E) / (r - r_new)
-                theta = theta + frac * dtheta
-                return R_E * theta, "returns"  # Skip distance = arc length
-
-            r, theta = r_new, theta_new
-            s += ds_km
-
-            # Check if ray escaped through top of ionosphere
-            if going_up and (r - R_E) > z_top_km:
-                return R_E * theta, "escapes"
-
-        # Ray didn't return or escape within distance limit
-        return R_E * theta, "stops"
-    def trace_ray_spherical_with_path(f_MHz, elev_deg, refractive_index_complex,
-                                       s_max_km=6000.0, ds_km=10.0, z_top_km=600.0):
-        """
-        Trace an HF radio ray and record its entire path for visualization.
-
-        Similar to trace_ray_spherical_fast but records (x, z) coordinates along the path.
-
-        Returns:
-        --------
-        x_km : list
-            Surface distance (great circle distance) at each point along path
-        z_km : list
-            Altitude above ground at each point along path
-        status : str
-            "returns", "escapes", or "stops"
-        """
-        f_Hz = f_MHz * 1e6
-
-        # Initial position
-        r = R_E
-        theta = 0.0
-
-        # Calculate ray parameter
-        psi0 = np.radians(90.0 - elev_deg)
-        n0_arr, _ = refractive_index_complex(np.array([0.0]), f_Hz)
-        b = float(np.real(n0_arr[0])) * r * np.sin(psi0)
-
-        s = 0.0
-        going_up = True
-
-        # Record path
-        x_path = [R_E * theta]
-        z_path = [r - R_E]
-
-        while s < s_max_km:
-            z = r - R_E
-
-            if z < 0:
-                break
-
-            n_arr, n2_arr = refractive_index_complex(np.array([z]), f_Hz)
-            n_r = float(np.real(n_arr[0]))
-            n2_r = float(np.real(n2_arr[0]))
-
-            if n2_r <= 0:
-                going_up = False
-
-            sin_psi = b / (n_r * r)
-            if abs(sin_psi) >= 1:
-                going_up = False
-                sin_psi = np.sign(sin_psi) * 0.999
-
-            cos_psi = np.sqrt(1.0 - sin_psi**2)
-            dr = ds_km * cos_psi * (1 if going_up else -1)
-            dtheta = ds_km * sin_psi / r
-
-            r_new = r + dr
-            theta_new = theta + dtheta
-
-            if not going_up and r_new < R_E:
-                frac = (r - R_E) / (r - r_new)
-                theta_final = theta + frac * dtheta
-                x_path.append(R_E * theta_final)
-                z_path.append(0.0)
-                return x_path, z_path, "returns"
-
-            r, theta = r_new, theta_new
-            s += ds_km
-
-            # Record this point
-            x_path.append(R_E * theta)
-            z_path.append(r - R_E)
-
-            if going_up and (r - R_E) > z_top_km:
-                return x_path, z_path, "escapes"
-
-        return x_path, z_path, "stops"
-
-    def trace_ray_with_absorption(f_MHz, elev_deg, refractive_index_complex,
-                                    s_max_km=6000.0, ds_km=10.0, z_top_km=600.0):
-        """
-        Trace an HF radio ray and calculate total signal loss due to absorption.
-
-        This function traces the ray path and accumulates absorption loss by integrating
-        the imaginary part of the refractive index along the path. The imaginary part
-        of n represents wave attenuation due to collisions in the ionosphere.
-
-        Parameters:
-        -----------
-        f_MHz : float
-            Radio frequency in MHz
-        elev_deg : float
-            Launch elevation angle in degrees
-        refractive_index_complex : function
-            Function to calculate refractive index at any altitude
-        s_max_km : float
-            Maximum ray path length in km
-        ds_km : float
-            Step size for ray tracing in km
-        z_top_km : float
-            Altitude above which ray is considered to have escaped
-
-        Returns:
-        --------
-        x_km : list
-            Surface distance at each point along path
-        z_km : list
-            Altitude at each point along path
-        status : str
-            "returns", "escapes", or "stops"
-        total_loss_dB : float
-            Total absorption loss in dB along the ray path
-        """
-        f_Hz = f_MHz * 1e6
-        omega = 2.0 * pi * f_Hz
-        c_km_per_s = 3.0e5  # Speed of light in km/s
-
-        # Initial position
-        r = R_E
-        theta = 0.0
-
-        # Calculate ray parameter
-        psi0 = np.radians(90.0 - elev_deg)
-        n0_arr, _ = refractive_index_complex(np.array([0.0]), f_Hz)
-        b = float(np.real(n0_arr[0])) * r * np.sin(psi0)
-
-        s = 0.0
-        going_up = True
-
-        # Record path and absorption
-        x_path = [R_E * theta]
-        z_path = [r - R_E]
-        total_absorption = 0.0  # Accumulated absorption (Nepers)
-
-        while s < s_max_km:
-            z = r - R_E
-
-            if z < 0:
-                break
-
-            n_arr, n2_arr = refractive_index_complex(np.array([z]), f_Hz)
-            n_r = float(np.real(n_arr[0]))
-            n2_r = float(np.real(n2_arr[0]))
-            n2_i = float(np.imag(n2_arr[0]))
-
-            # Use Sen-Wyller absorption formula directly
-            # α (Nepers/km) = (ω/2c) × |Im(n²)| / Re(n)
-            # This correctly gives absorption ∝ 1/f² at high frequencies
-            if n_r > 1e-6 and abs(n2_i) > 1e-12:
-                alpha = (omega / (2.0 * c_km_per_s)) * abs(n2_i) / n_r
-            else:
-                alpha = 0.0
-
-            # Accumulate absorption over this step: ∫ α ds
-            total_absorption += alpha * ds_km
-
-            if n2_r <= 0:
-                going_up = False
-
-            sin_psi = b / (n_r * r)
-            if abs(sin_psi) >= 1:
-                going_up = False
-                sin_psi = np.sign(sin_psi) * 0.999
-
-            cos_psi = np.sqrt(1.0 - sin_psi**2)
-            dr = ds_km * cos_psi * (1 if going_up else -1)
-            dtheta = ds_km * sin_psi / r
-
-            r_new = r + dr
-            theta_new = theta + dtheta
-
-            if not going_up and r_new < R_E:
-                # Ray returns to Earth
-                frac = (r - R_E) / (r - r_new)
-                theta_final = theta + frac * dtheta
-                x_path.append(R_E * theta_final)
-                z_path.append(0.0)
-
-                # Convert absorption from Nepers to dB: dB = 8.686 × Nepers
-                total_loss_dB = 8.686 * total_absorption
-                return x_path, z_path, "returns", total_loss_dB
-
-            r, theta = r_new, theta_new
-            s += ds_km
-
-            # Record this point
-            x_path.append(R_E * theta)
-            z_path.append(r - R_E)
-
-            if going_up and (r - R_E) > z_top_km:
-                # Ray escapes
-                total_loss_dB = 8.686 * total_absorption
-                return x_path, z_path, "escapes", total_loss_dB
-
-        # Ray stops
-        total_loss_dB = 8.686 * total_absorption
-        return x_path, z_path, "stops", total_loss_dB
+def _():
+    # Import physics model functions from external module
+    from model import (
+        chapman_layer,
+        make_ionosphere_for_foF2,
+        make_refractive_index_func,
+        make_tilted_ionosphere_2D,
+        plasma_frequency_Hz_from_Ne,
+        trace_ray_2D_with_tilts,
+        trace_ray_spherical_with_path,
+        trace_ray_with_absorption,
+        R_E,
+        pi
+    )
     return (
         chapman_layer,
         make_ionosphere_for_foF2,
         make_refractive_index_func,
+        make_tilted_ionosphere_2D,
         plasma_frequency_Hz_from_Ne,
+        trace_ray_2D_with_tilts,
         trace_ray_spherical_with_path,
         trace_ray_with_absorption,
     )
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo):
     # ============================================================================
-    # INTERACTIVE RAY PATH CONTROLS
+    # UI CONTROLS: 1D MODEL SLIDERS
     # ============================================================================
 
-    # Create sliders for interactive ray path visualization
+    # 1D mode slider (single foF2)
     foF2_slider = mo.ui.slider(
-        start=2,
-        stop=25,
-        step=0.5,
-        value=12,
-        label="foF2",
-        full_width=True
+        start=2.0,
+        stop=25.0,
+        step=0.1,
+        value=12.0,
+        label="foF2 (MHz)"
     )
 
+    # Elevation angle slider
     elevation_slider = mo.ui.slider(
-        start=5,
-        stop=85,
-        step=5,
+        start=1,
+        stop=89,
+        step=1,
         value=30,
-        label="Elevation Angle",
-        full_width=True
+        label="Elevation Angle (degrees)"
     )
 
-    # Display sliders - values will be shown in next cell
+    # Display descriptive text
     mo.vstack([
-        mo.md("## Interactive Ray Path Visualization"),
-        mo.md("Adjust the sliders to see how ray paths change with different ionospheric conditions and launch angles."),
+        mo.md("## Interactive Controls - 1D Model"),
+        mo.md("""
+        Adjust the sliders below to explore how different ionospheric conditions affect radio propagation:
+        - **foF2**: Critical frequency of the F2 layer (affects ionization level)
+        - **Elevation angle**: Launch angle of the radio wave above the horizon
+        """),
     ])
     return elevation_slider, foF2_slider
 
@@ -954,7 +288,7 @@ def _(mo):
 @app.cell
 def _(elevation_slider, foF2_slider, mo):
     # ============================================================================
-    # SLIDER DISPLAY WITH VALUES AND DAY/NIGHT INDICATOR
+    # SLIDER DISPLAY WITH VALUES AND DAY/NIGHT INDICATOR (1D MODEL)
     # ============================================================================
 
     # Get current slider values
@@ -1016,24 +350,31 @@ def _(
     _path_data_interactive = []
     _endpoint_data_interactive = []
 
+    _MAX_ALTITUDE = 600  # km - clip rays at this altitude
+
     for _f_interactive in _interactive_freqs:
         _x_int, _z_int, _status_int = trace_ray_spherical_with_path(
-            _f_interactive, _interactive_elev, _interactive_refractive_index
+            _f_interactive, _interactive_elev, _interactive_refractive_index,
+            max_distance_km=8000.0, step_km=5.0
         )
 
-        # Add path data (each point along the ray path)
+        # Add path data (clip at 600 km altitude)
         for _idx, (_x, _z) in enumerate(zip(_x_int, _z_int)):
-            _path_data_interactive.append({
-                'frequency': _f_interactive,
-                'distance_km': _x,
-                'altitude_km': _z,
-                'status': _status_int,
-                'label': f"{_f_interactive} MHz ({_status_int})",
-                'point_index': _idx
-            })
+            if _z <= _MAX_ALTITUDE:
+                _path_data_interactive.append({
+                    'frequency': _f_interactive,
+                    'distance_km': _x,
+                    'altitude_km': _z,
+                    'status': _status_int,
+                    'label': f"{_f_interactive} MHz ({_status_int})",
+                    'point_index': _idx
+                })
+            else:
+                # Ray exceeded altitude limit, stop adding points
+                break
 
-        # Mark landing point for returning rays
-        if _status_int == "returns":
+        # Mark landing point for returning rays (only if within altitude limit)
+        if _status_int == "returns" and _z_int[-1] <= _MAX_ALTITUDE:
             _endpoint_data_interactive.append({
                 'frequency': _f_interactive,
                 'distance_km': _x_int[-1],
@@ -1113,14 +454,15 @@ def _(
 
 @app.cell
 def _(
+    alt,
     elevation_slider,
     foF2_slider,
     make_ionosphere_for_foF2,
     make_refractive_index_func,
+    pd,
     trace_ray_with_absorption,
 ):
-    import altair as alt
-    import pandas as pd
+
 
     _loss_foF2 = foF2_slider.value
     _loss_elev = elevation_slider.value
@@ -1135,9 +477,12 @@ def _(
     _path_data = []
     _loss_summary_data = []
 
+    _MAX_ALTITUDE_LOSS = 600  # km - clip rays at this altitude
+
     for _f_loss in _loss_freqs:
         _x_loss, _z_loss, _status_loss, _total_loss = trace_ray_with_absorption(
-            _f_loss, _loss_elev, _loss_refractive_index
+            _f_loss, _loss_elev, _loss_refractive_index,
+            max_distance_km=8000.0, step_km=5.0
         )
 
         # Assign color category based on loss
@@ -1154,21 +499,25 @@ def _(
             _loss_category = 'Very Weak (>60dB)'
             _color_val = 4
 
-        # Add path data (each point along the ray path)
+        # Add path data (clip at 600 km altitude)
         for _idx, (_x, _z) in enumerate(zip(_x_loss, _z_loss)):
-            _path_data.append({
-                'frequency': _f_loss,
-                'distance_km': _x,
-                'altitude_km': _z,
-                'loss_dB': _total_loss,
-                'status': _status_loss,
-                'loss_category': _loss_category,
-                'color_val': _color_val,
-                'point_index': _idx
-            })
+            if _z <= _MAX_ALTITUDE_LOSS:
+                _path_data.append({
+                    'frequency': _f_loss,
+                    'distance_km': _x,
+                    'altitude_km': _z,
+                    'loss_dB': _total_loss,
+                    'status': _status_loss,
+                    'loss_category': _loss_category,
+                    'color_val': _color_val,
+                    'point_index': _idx
+                })
+            else:
+                # Ray exceeded altitude limit, stop adding points
+                break
 
-        # Add summary data for bar chart
-        if _status_loss == "returns":
+        # Add summary data for bar chart (only if within altitude limit)
+        if _status_loss == "returns" and _z_loss[-1] <= _MAX_ALTITUDE_LOSS:
             _loss_summary_data.append({
                 'frequency': _f_loss,
                 'loss_dB': _total_loss,
@@ -1300,7 +649,294 @@ def _(
 
     # Combine charts vertically
     (_ray_chart + _endpoint_chart) & _loss_chart
-    return alt, pd
+    return
+
+
+@app.cell
+def _(mo):
+    # ============================================================================
+    # SECTION DIVIDER: 2D MODEL WITH IONOSPHERIC TILTS
+    # ============================================================================
+    mo.md(r"""
+    ---
+
+    # Part 2: 2D Model with Ionospheric Tilts
+
+    The sections above showed a **1D ionosphere model** where electron density varies only with altitude. In reality, the ionosphere also has **horizontal gradients** that cause fascinating propagation effects.
+
+    This 2D model includes:
+    - **Horizontal foF2 gradient**: Varies linearly from transmitter to 3000 km distance
+    - **Off-great-circle propagation**: Radio waves bend sideways when encountering horizontal gradients
+    - **Day/night terminator simulation**: Model the sharp density change at sunrise/sunset boundaries
+    - **Pedersen rays**: High-angle rays that return at moderate distances due to horizontal gradients
+
+    ---
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    # ============================================================================
+    # UI CONTROLS: 2D MODEL SLIDERS
+    # ============================================================================
+
+    # 2D tilt mode sliders (distance-based gradient)
+    foF2_at_tx_slider = mo.ui.slider(
+        start=2.0,
+        stop=25.0,
+        step=0.1,
+        value=15.0,
+        label="foF2 at Transmitter (0 km)"
+    )
+
+    foF2_at_distance_slider = mo.ui.slider(
+        start=2.0,
+        stop=25.0,
+        step=0.1,
+        value=4.0,
+        label="foF2 at Reference Distance"
+    )
+
+    # Distance slider for gradient reference point
+    tilt_distance_slider = mo.ui.slider(
+        start=200.0,
+        stop=8000.0,
+        step=20.0,
+        value=3000.0,
+        label="Reference Distance (km)"
+    )
+
+    # Elevation angle slider for 2D model
+    elevation_slider_2D = mo.ui.slider(
+        start=1,
+        stop=89,
+        step=1,
+        value=30,
+        label="Elevation Angle (degrees)"
+    )
+
+    # Display descriptive text
+    mo.vstack([
+        mo.md("## Interactive Controls - 2D Model"),
+        mo.md("""
+        Adjust the sliders below to explore how horizontal ionospheric gradients affect radio propagation:
+        - **foF2 at Transmitter (0 km)**: Critical frequency at the starting point
+        - **foF2 at Reference Distance**: Critical frequency at the reference distance (creates linear gradient)
+        - **Reference Distance**: Distance over which the foF2 gradient occurs (500-8000 km)
+        - **Elevation angle**: Launch angle of the radio wave above the horizon
+
+        **Suggested experiments**:
+        - **Day/night terminator**: Set foF2 at TX = 15 MHz, foF2 at distance = 4 MHz, distance = 3000 km (sharp terminator)
+        - **Gradual transition**: Set foF2 at TX = 12 MHz, foF2 at distance = 6 MHz, distance = 6000 km (gentle gradient)
+        - **Short-range gradient**: Set distance = 1000 km for steep ionospheric tilt over short distances
+        """),
+    ])
+    return (
+        elevation_slider_2D,
+        foF2_at_distance_slider,
+        foF2_at_tx_slider,
+        tilt_distance_slider,
+    )
+
+
+@app.cell
+def _(
+    elevation_slider_2D,
+    foF2_at_distance_slider,
+    foF2_at_tx_slider,
+    mo,
+    tilt_distance_slider,
+):
+    # ============================================================================
+    # SLIDER DISPLAY WITH VALUES (2D MODEL)
+    # ============================================================================
+
+    # Get current slider values
+    _current_foF2_tx = foF2_at_tx_slider.value
+    _current_foF2_dist = foF2_at_distance_slider.value
+    _current_distance = tilt_distance_slider.value
+    _current_elev_2D = elevation_slider_2D.value
+
+    # Display sliders with value labels
+    mo.vstack([
+        mo.md(f"**foF2 at Transmitter ({_current_foF2_tx} MHz)**"),
+        foF2_at_tx_slider,
+        mo.md(""),  # Spacer
+        mo.md(f"**foF2 at Reference Distance ({_current_foF2_dist} MHz)**"),
+        foF2_at_distance_slider,
+        mo.md(""),
+        mo.md(f"**Reference Distance ({_current_distance:.0f} km)**"),
+        tilt_distance_slider,
+        mo.md(""),
+        mo.md(f"**Gradient**: {_current_foF2_tx} MHz → {_current_foF2_dist} MHz over {_current_distance:.0f} km ({(_current_foF2_dist - _current_foF2_tx)/_current_distance:.4f} MHz/km)"),
+        mo.md(""),  # Spacer
+        mo.md(f"**Elevation Angle ({_current_elev_2D}°)**"),
+        elevation_slider_2D,
+    ])
+    return
+
+
+@app.cell
+def _(
+    elevation_slider_2D,
+    foF2_at_distance_slider,
+    foF2_at_tx_slider,
+    make_refractive_index_func,
+    make_tilted_ionosphere_2D,
+    plots,
+    tilt_distance_slider,
+    trace_ray_2D_with_tilts,
+):
+    # ============================================================================
+    # 2D IONOSPHERIC TILTS - SIDE VIEW VISUALIZATION
+    # ============================================================================
+
+    # Get current slider values
+    _tilt_foF2_tx = foF2_at_tx_slider.value
+    _tilt_foF2_dist = foF2_at_distance_slider.value
+    _tilt_distance = tilt_distance_slider.value
+    _tilt_elev = elevation_slider_2D.value
+
+    # Build 2D tilted ionosphere with distance-based gradient
+    _tilt_electron_density = make_tilted_ionosphere_2D(_tilt_foF2_tx, _tilt_foF2_dist, _tilt_distance)
+    _tilt_refractive_index = make_refractive_index_func(_tilt_electron_density, is_2D=True)
+
+    # Trace rays for all HF frequencies
+    _tilt_freqs = [1.8, 3.5, 5.3, 7.0, 10.1, 14.0, 18.068, 21.0, 24.89, 28.0]
+
+    # Collect ray data
+    _ray_data_2D = []
+    for _f_tilt in _tilt_freqs:
+        _x_tilt, _z_tilt, _phi_tilt, _status_tilt = trace_ray_2D_with_tilts(
+            _f_tilt, _tilt_elev, _tilt_refractive_index,
+            max_distance_km=8000.0, step_km=5.0
+        )
+        _ray_data_2D.append({
+            'frequency': _f_tilt,
+            'x_path': _x_tilt,
+            'z_path': _z_tilt,
+            'phi_path': _phi_tilt,
+            'status': _status_tilt
+        })
+
+    # Create side view visualization using plots module
+    plots.plot_2D_side_view(_ray_data_2D, _tilt_foF2_tx, _tilt_foF2_dist, _tilt_elev, _tilt_distance)
+    return
+
+
+@app.cell
+def _(
+    elevation_slider_2D,
+    foF2_at_distance_slider,
+    foF2_at_tx_slider,
+    make_refractive_index_func,
+    make_tilted_ionosphere_2D,
+    plots,
+    tilt_distance_slider,
+):
+    # ============================================================================
+    # 2D ABSORPTION LOSS VISUALIZATION
+    # ============================================================================
+
+    # Import the absorption tracing function
+    from model import trace_ray_2D_with_absorption
+
+    # Get current slider values
+    _abs_foF2_tx = foF2_at_tx_slider.value
+    _abs_foF2_dist = foF2_at_distance_slider.value
+    _abs_distance = tilt_distance_slider.value
+    _abs_elev = elevation_slider_2D.value
+
+    # Build 2D tilted ionosphere
+    _abs_electron_density = make_tilted_ionosphere_2D(_abs_foF2_tx, _abs_foF2_dist, _abs_distance)
+    _abs_refractive_index = make_refractive_index_func(_abs_electron_density, is_2D=True)
+
+    # Trace rays with absorption tracking
+    _abs_freqs = [1.8, 3.5, 5.3, 7.0, 10.1, 14.0, 18.068, 21.0, 24.89, 28.0]
+
+    # Collect ray data with absorption
+    _ray_data_2D_abs = []
+    for _f_abs in _abs_freqs:
+        _x_abs, _z_abs, _phi_abs, _status_abs, _loss_abs = trace_ray_2D_with_absorption(
+            _f_abs, _abs_elev, _abs_refractive_index,
+            max_distance_km=8000.0, step_km=5.0
+        )
+        _ray_data_2D_abs.append({
+            'frequency': _f_abs,
+            'x_path': _x_abs,
+            'z_path': _z_abs,
+            'phi_path': _phi_abs,
+            'status': _status_abs,
+            'loss_dB': _loss_abs
+        })
+
+    # Create visualization using plots module
+    plots.plot_2D_absorption(_ray_data_2D_abs, _abs_foF2_tx, _abs_foF2_dist, _abs_elev, _abs_distance)
+    return
+
+
+@app.cell
+def _(
+    elevation_slider_2D,
+    foF2_at_distance_slider,
+    foF2_at_tx_slider,
+    make_refractive_index_func,
+    make_tilted_ionosphere_2D,
+    plots,
+    tilt_distance_slider,
+    trace_ray_2D_with_tilts,
+):
+    # ============================================================================
+    # 2D IONOSPHERIC TILTS - TOP VIEW (AZIMUTH DEFLECTION)
+    # ============================================================================
+
+    # Get current slider values
+    _azimuth_foF2_tx = foF2_at_tx_slider.value
+    _azimuth_foF2_dist = foF2_at_distance_slider.value
+    _azimuth_distance = tilt_distance_slider.value
+    _azimuth_elev = elevation_slider_2D.value
+
+    # Build 2D tilted ionosphere with distance-based gradient
+    _azimuth_electron_density = make_tilted_ionosphere_2D(_azimuth_foF2_tx, _azimuth_foF2_dist, _azimuth_distance)
+    _azimuth_refractive_index = make_refractive_index_func(_azimuth_electron_density, is_2D=True)
+
+    # Trace rays for all HF frequencies
+    _azimuth_freqs = [1.8, 3.5, 5.3, 7.0, 10.1, 14.0, 18.068, 21.0, 24.89, 28.0]
+
+    # Collect ray data
+    _ray_data_2D_azimuth = []
+    for _f_azimuth in _azimuth_freqs:
+        _x_azimuth, _z_azimuth, _phi_azimuth, _status_azimuth = trace_ray_2D_with_tilts(
+            _f_azimuth, _azimuth_elev, _azimuth_refractive_index,
+            max_distance_km=8000.0, step_km=5.0
+        )
+        _ray_data_2D_azimuth.append({
+            'frequency': _f_azimuth,
+            'x_path': _x_azimuth,
+            'z_path': _z_azimuth,
+            'phi_path': _phi_azimuth,
+            'status': _status_azimuth
+        })
+
+    # Create top view visualization using plots module
+    plots.plot_2D_top_view(_ray_data_2D_azimuth, _azimuth_foF2_tx, _azimuth_foF2_dist, _azimuth_elev, _azimuth_distance)
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
+    return
 
 
 @app.cell
